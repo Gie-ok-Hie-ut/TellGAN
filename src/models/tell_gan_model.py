@@ -19,7 +19,7 @@ class TellGANModel(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
 
         self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgLSTM = networks.define_ImgLSTM()
+        self.netImgLSTM = networks.define_ConvLSTM()
         self.netWordEmbed = networks.define_WordEmbed()
         self.netImgDecoder = networks.define_ImgDecoder()
 
