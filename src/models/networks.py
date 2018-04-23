@@ -4,6 +4,8 @@ from torch.nn import init
 import functools
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
+
+from .convlstm import ConvLSTM
 ###############################################################################
 # Functions
 ###############################################################################
@@ -124,13 +126,42 @@ def define_ImgEncoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', 
 
     return netImgIncoder
 
+
+def define_ConvLSTM(input_size,
+                   input_dim,
+                   num_layers,
+                   hidden_dim,
+                   kernel_size,
+                   gpu_ids=[]):
+
+    convLSTM = None
+    use_gpu = len(gpu_ids) > 0
+
+    if use_gpu:
+        assert (torch.cuda.is_available())
+
+    convLSTM = ConvLSTM(input_size=input_size,
+                          input_dim=input_dim,
+                          hidden_dim=hidden_dim,
+                          kernel_size=kernel_size,
+                          num_layers=num_layers)
+
+    if len(gpu_ids) > 0:
+        convLSTM.cuda(gpu_ids[0])
+
+    # Hidden State initialized if not given
+    # hidden_state = netImgLSTM.get_init_states()
+
+    return convLSTM
+
+
 def define_ImgLSTM(use_dropout=False, init_type='normal', gpu_ids=[]):
     netImgLSTM = None
     use_gpu = len(gpu_ids) > 0
     norm_layer = get_norm_layer(norm_type=norm)
 
     if use_gpu:
-        assert(torch.cuda.is_available())
+        assert (torch.cuda.is_available())
 
     which_model_LSTM = 'ordinary_lstm':
 
@@ -143,7 +174,7 @@ def define_ImgLSTM(use_dropout=False, init_type='normal', gpu_ids=[]):
         netImgLSTM.cuda(gpu_ids[0])
 
     init_weights(netImgLSTM, init_type=init_type)
-    
+
     return netImgLSTM
 
 def define_WordEmbed(use_dropout=False, init_type='normal', gpu_ids=[]):
