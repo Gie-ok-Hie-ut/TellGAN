@@ -43,7 +43,7 @@ class Video(object):
         frame = self.frames[index]
 
         # Get Word for next Frame
-        next_frame_word = self.transcript.get_word_from_frame(index+1)
+        next_frame_word = self.transcript.get_word_from_frame(index)
 
         pil_im = Image.fromarray(frame)
 
