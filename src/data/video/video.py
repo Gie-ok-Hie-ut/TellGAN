@@ -7,7 +7,7 @@ from .transcript import Transcript
 
 
 class Video(object):
-    def __init__(self, vid_path=None, trans_path=None):
+    def __init__(self, vid_path=None, trans_path=None, transform=None, target_transform=None):
 
         if vid_path is None:
             self.frames = []
@@ -17,6 +17,9 @@ class Video(object):
             self.from_video(vid_path)
 
         self.transcript = Transcript(trans_path)
+
+        self.transform = transform
+        self.target_transform = target_transform
 
     def from_video(self, path):
         #(self.frames, self.num_frames, self.frame_rate) = self.get_video_frames(path)
@@ -43,11 +46,17 @@ class Video(object):
         frame = self.frames[index]
 
         # Get Word for next Frame
-        next_frame_word = self.transcript.get_word_from_frame(index)
+        target = self.transcript.get_word_from_frame(index)
 
-        pil_im = Image.fromarray(frame)
+        pil_img = Image.fromarray(frame)
 
-        return pil_im, next_frame_word
+        if self.transform is not None:
+            pil_img = self.transform(pil_img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return pil_img, target
 
 
     def __len__(self):
