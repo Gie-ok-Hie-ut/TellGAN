@@ -3,12 +3,12 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
 from util.visualizer import Visualizer
+from .data.grid_loader import GRID
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()
-    data_loader = CreateDataLoader(opt)
-    dataset = data_loader.load_data()
-    dataset_size = len(data_loader)
+    dataset = GRID(opt.dataset_path)
+    dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
     model = create_model(opt)
@@ -20,18 +20,23 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        init_tensor=True
-        for i, data in enumerate(dataset):
+        for vid_idx, video in enumerate(dataset):
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
+
             visualizer.reset()
             total_steps += opt.batchSize
             epoch_iter += opt.batchSize
-            model.set_input(data)
 
-            model.optimize_parameters(init_tensor)
-            init_tensor=False
+            init_tensor=True
+
+            # frame is a tuple (frame_img, frame_word)
+            for frame_idx, frame in enumerate(video):
+                model.set_input(frame)
+
+                model.optimize_parameters(init_tensor)
+                init_tensor=False
 
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
@@ -49,7 +54,7 @@ if __name__ == '__main__':
                       (epoch, total_steps))
                 model.save('latest')
 
-            iter_data_time = time.time()
+                iter_data_time = time.time()
         if epoch % opt.save_epoch_freq == 0:
             print('saving the model at the end of epoch %d, iters %d' %
                   (epoch, total_steps))
