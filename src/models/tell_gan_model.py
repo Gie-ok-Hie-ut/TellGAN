@@ -65,8 +65,7 @@ class TellGANModel(BaseModel):
 
     def set_input(self, input):
 
-        input_frame = input['Frame']
-        input_transcription = input['Transcription']
+        (input_frame, input_transcription)= input
 
         if len(self.gpu_ids) > 0:
         	input_frame = input_frame.cuda(self.gpu_ids[0], async=True)
