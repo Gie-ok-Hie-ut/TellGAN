@@ -7,7 +7,7 @@ from .transcript import Transcript
 
 
 class Video(object):
-    def __init__(self, vid_path=None, trans_path=None):
+    def __init__(self, vid_path=None, trans_path=None, transform=None, target_transform=None):
 
         if vid_path is None:
             self.frames = []
@@ -17,6 +17,9 @@ class Video(object):
             self.from_video(vid_path)
 
         self.transcript = Transcript(trans_path)
+
+        self.transform = transform
+        self.target_transform = target_transform
 
     def from_video(self, path):
         #(self.frames, self.num_frames, self.frame_rate) = self.get_video_frames(path)
@@ -43,11 +46,17 @@ class Video(object):
         frame = self.frames[index]
 
         # Get Word for next Frame
-        next_frame_word = self.transcript.get_word_from_frame(index)
+        target = self.transcript.get_word_from_frame(index)
 
-        pil_im = Image.fromarray(frame)
+        pil_img = Image.fromarray(frame)
 
-        return pil_im, next_frame_word
+        if self.transform is not None:
+            pil_img = self.transform(pil_img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return pil_img, target
 
 
     def __len__(self):
@@ -58,7 +67,7 @@ class Video(object):
 def main():
 
     vpath = '/home/jake/classes/cs703/Project/data/grid/vid/s1/lgaz8p.mpg'
-    tpath = '/home/jake/classes/cs703/Project/data/grid/anno/align/lgaz8p.align'
+    tpath = '/home/jake/classes/cs703/Project/data/grid/align/lgaz8p.align'
 
     video = Video(vpath, tpath)
 
@@ -71,6 +80,7 @@ def main():
     for i in range(0, len(video.frames)):
         frame = cv2.cvtColor(video.frames[i],cv2.COLOR_BGR2RGB) #this code do color conversion
         cv2.imshow('frame', frame)
+        print("frame shape: ", frame.shape)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

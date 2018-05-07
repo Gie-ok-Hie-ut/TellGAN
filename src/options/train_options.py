@@ -4,6 +4,10 @@ from .base_options import BaseOptions
 class TrainOptions(BaseOptions):
     def initialize(self):
         BaseOptions.initialize(self)
+        self.parser = argparse.ArgumentParser(description="Traing a ResNet Model for multi-label prediction.")
+        self.parser.add_argument("--dataset-path", type=str, default=None,
+                        help="Location of Dataset Kit Directory, currently only supports GRID Corpus.")
+        #################################################################################
         self.parser.add_argument('--display_freq', type=int, default=100, help='frequency of showing training results on screen')
         self.parser.add_argument('--display_single_pane_ncols', type=int, default=0, help='if positive, display all images in a single visdom web panel with certain number of images per row.')
         self.parser.add_argument('--update_html_freq', type=int, default=1000, help='frequency of saving training results to html')
