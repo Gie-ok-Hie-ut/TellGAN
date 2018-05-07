@@ -14,94 +14,112 @@ class TellGANModel(BaseModel):
 
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
-        # load/define networks
-        # The naming conversion is different from those used in the paper
-        # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
 
-        self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgLSTM = networks.define_ConvLSTM()
-        self.netWordEmbed = networks.define_WordEmbed()
-        self.netImgDecoder = networks.define_ImgDecoder()
-
-
-
-        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
-                                        opt.ngf, opt.which_model_netG, opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netImgLSTM = networks.define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,self.gpu_ids):
+        self.netWordEmbed = networks.define_WordEmbed(input_size,input_dim,num_layers,hidden_dim,kernel_size,self.gpu_ids)
+        self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
-            self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
-                                            opt.which_model_netD,
-                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
-            self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
-                                            opt.which_model_netD,
-                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
+            self.netD = networks.define_D(opt.output_nc, opt.ndf,opt.which_model_netD,opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, self.gpu_ids)
+
         if not self.isTrain or opt.continue_train:
             which_epoch = opt.which_epoch
             self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
             self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
             self.load_network(self.netWordEmbed, 'WordEmbed', which_epoch)
+            self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
 
-            self.load_network(self.netG_A, 'G_A', which_epoch)
-            self.load_network(self.netG_B, 'G_B', which_epoch)
             if self.isTrain:
-                self.load_network(self.netD_A, 'D_A', which_epoch)
-                self.load_network(self.netD_B, 'D_B', which_epoch)
+                self.load_network(self.netD, 'Discriminator', which_epoch)
+
 
         if self.isTrain:
             self.fake_A_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
+
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
-            self.criterionCycle = torch.nn.L1Loss()
-            self.criterionIdt = torch.nn.L1Loss()
+            self.criterionIdt = torch.nn.L1Loss() #L1 Loss Okay?
+
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
-                                                lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D_A = torch.optim.Adam(self.netD_A.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D_B = torch.optim.Adam(self.netD_B.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(), self.netWordEmbed.parameters(),self.netImgDecoder.parameters()),lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers = []
             self.schedulers = []
             self.optimizers.append(self.optimizer_G)
-            self.optimizers.append(self.optimizer_D_A)
-            self.optimizers.append(self.optimizer_D_B)
+            self.optimizers.append(self.optimizer_D)
+
             for optimizer in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
 
         print('---------- Networks initialized -------------')
-        networks.print_network(self.netG_A)
-        networks.print_network(self.netG_B)
+        networks.print_network(self.netImgEncoder)
+        networks.print_network(self.netImgLSTM)
+        networks.print_network(self.netWordEmbed)
+        networks.print_network(self.netImgDecoder)
         if self.isTrain:
-            networks.print_network(self.netD_A)
-            networks.print_network(self.netD_B)
+            networks.print_network(self.netD)
         print('-----------------------------------------------')
 
     def set_input(self, input):
-        AtoB = self.opt.which_direction == 'AtoB'
-        input_A = input['A' if AtoB else 'B']
-        input_B = input['B' if AtoB else 'A']
+
+        input_frame = input['Frame']
+        input_transcription = input['Transcription']
+
         if len(self.gpu_ids) > 0:
-            input_A = input_A.cuda(self.gpu_ids[0], async=True)
-            input_B = input_B.cuda(self.gpu_ids[0], async=True)
-        self.input_A = input_A
-        self.input_B = input_B
-        self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        	input_frame = input_frame.cuda(self.gpu_ids[0], async=True)
+        
+        self.input_frame = input_frame
+        self.input_transcription = input_transcription
+
 
     def forward(self):
-        self.real_A = Variable(self.input_A)
-        self.real_B = Variable(self.input_B)
+        self.img_input = Variable(self.input_frame)
+        self.word_input = Variable(self.input_transcription)
 
-    def test(self):
-        real_A = Variable(self.input_A, volatile=True)
-        fake_B = self.netG_A(real_A)
-        self.rec_A = self.netG_B(fake_B).data
-        self.fake_B = fake_B.data
 
-        real_B = Variable(self.input_B, volatile=True)
-        fake_A = self.netG_B(real_B)
-        self.rec_B = self.netG_A(fake_A).data
-        self.fake_A = fake_A.data
+    def test(self,init_tensor):
+
+    	img_input = Variable(self.input_frame,volatile = True)
+    	word_input = Variable(self.input_transcription, volatile=True)
+
+    	if init_tensor == True:
+    		self.img_init = img_input
+    		self.word_init = word_input
+
+            # Different from Training.
+	    	self.img_enc_stack = 0
+	    	self.word_enc_stack = 0
+
+	    	# Refresh All saved data
+	    	self.convlstm_input = 0
+	    	self.convlstm_output = 0
+
+	    	# Redundant
+	    	self.img_predict = img_input
+
+
+	    else:
+	    	# Predict Current Img
+	    	self.word_cur = self.word_input
+
+	    	self.img_cur_enc = self.netImgEncoder(self.img_predict)
+	    	self.word_cur_enc = self.netWordEmbed(self.word_cur)
+
+	    	self.img_enc_stack = torch.cat((self.img_enc_stack,self.img_cur_enc),1)
+	    	self.word_enc_stack = torch.cat((self.word_enc_stack,self.word_cur_enc),1)
+
+	    	self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),0) # Stack Input
+	    	self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+
+	    	self.img_predict = self.netImgDecoder(self.img_init,self.convlstm_output)
+
+
+	    self.img_init_save = self.img_init.data
+	    self.img_cur_save = img_input.data
+	    self.img_predict_save = self.img_predict.data
 
     # get image paths
     def get_image_paths(self):
@@ -120,127 +138,124 @@ class TellGANModel(BaseModel):
         loss_D.backward()
         return loss_D
 
-    def backward_D_A(self):
-        fake_B = self.fake_B_pool.query(self.fake_B)
-        loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
-        self.loss_D_A = loss_D_A.data[0]
+    def backward_D(self):
+        loss_D = self.backward_D_basic(self.netD,self.img_cur,self.img_predict)
+        self.loss_D = loss_D.data[0]
 
-    def backward_D_B(self):
-        fake_A = self.fake_A_pool.query(self.fake_A)
-        loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
-        self.loss_D_B = loss_D_B.data[0]
+    def backward_G_init(self):
+    	self.img_init = self.img_input
+    	self.word_init = self.word_input
+
+    	self.img_cur_enc = self.netImgEncoder(self.img_init)
+    	self.word_cur_enc = self.netWordEmbed(self.word_init)
+
+    	self.img_enc_stack = self.img_cur_enc
+    	self.word_enc_stack = 0 # Is it okay to use 0?
+
+    	# Refresh All saved data
+    	self.convlstm_input = 0
+    	self.convlstm_output = 0
+
+    	# Save (Just for the exception case)
+    	self.img_init_save = self.img_init.data
+    	self.img_cur_save =  self.img_init.data
+    	self.img_predict_save =self.img_init.data
+    	self.loss_G = 0
+    	self.loss_idt = 0
 
     def backward_G(self):
-        lambda_idt = self.opt.lambda_identity
-        lambda_A = self.opt.lambda_A
-        lambda_B = self.opt.lambda_B
 
-        # Identity loss
-        if lambda_idt > 0:
-            # G_A should be identity if real_B is fed.
-            idt_A = self.netG_A(self.real_B)
-            loss_idt_A = self.criterionIdt(idt_A, self.real_B) * lambda_B * lambda_idt
-            # G_B should be identity if real_A is fed.
-            idt_B = self.netG_B(self.real_A)
-            loss_idt_B = self.criterionIdt(idt_B, self.real_A) * lambda_A * lambda_idt * 0
+    	# Variables
+        self.img_init
+        self.word_init
 
-            self.idt_A = idt_A.data
-            self.idt_B = idt_B.data
-            self.loss_idt_A = loss_idt_A.data[0]
-            self.loss_idt_B = loss_idt_B.data[0]
-        else:
-            loss_idt_A = 0
-            loss_idt_B = 0
-            self.loss_idt_A = 0
-            self.loss_idt_B = 0
+        self.img_cur 
+        self.img_predict
+        self.word_cur
+
+        self.img_cur_enc
+        self.word_cur_enc
+
+        self.img_enc_stack
+        self.word_enc_stack
+
+        self.convlstm_input
+        self.convlstm_output
 
 
+    	# Setting
+    	self.img_cur = self.img_input
+    	self.word_cur = self.word_input
+
+    	self.img_cur_enc = self.netImgEncoder(self.img_cur)
+    	self.word_cur_enc = self.netWordEmbed(self.word_cur)
+
+        # Stack Before
+        self.img_enc_stack
+    	self.word_enc_stack = torch.cat((self.word_enc_stack,self.word_cur_enc),1)
+
+        # Lstm
+    	self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),0) # Stack Input
+    	self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+
+        # Stack After
+        self.img_enc_stack = torch.cat((self.img_enc_stack,self.img_cur_enc),1)
+        self.word_enc_stack
+
+        #Final
+    	self.img_predict = self.netImgDecoder(self.img_init,self.convlstm_output)
+
+    	# Loss Weight
+    	weight_idt = 1
+    	weight_G = 1
+
+    	self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
+    	self.loss_idt = self.criterionIdt(self.img_cur,self.img_predict) * weight_idt
+
+    	loss_total = self.loss_G + loss_idt
+    	loss_total.backward()
+
+    	# Save
+    	self.img_init_save = self.img_init.data
+    	self.img_cur_save =  self.img_cur.data
+    	self.img_predict_save =img_predict.data
+    	self.loss_G = loss_G.data[0]
+    	self.loss_idt = loss_idt.data[0]
 
 
-
-        # Tell GAN
-        self.real_initial
-        self.real_current
-        self.real_next
-        self.real_next_anno
-
-
-        output_img = self.netImgEncoder(self.real_current)
-        output_anno = self.netWordEmbed(self.real_next_anno)
-
-        output_concat = torch.cat((output_img,output_anno),1)
-
-        output_lstm = self.netImgLSTM(output_concat)
-        fake_next = self.netImgDecoder(self.real_initial,output_lstm)
-
-        # GAN Loss
-        pred_fake = self.netD_A(fake_next)
-        loss_tell_G = self.criterionGAN(pred_fake, True)
-
-        pred_fake, real_next
-
-
-
-
-
-
-
-
-
-        # combined loss
-        loss_G = loss_tell_G
-        loss_G.backward()
-
-        self.fake_B = fake_B.data
-        self.fake_A = fake_A.data
-        self.rec_A = rec_A.data
-        self.rec_B = rec_B.data
-
-        self.loss_G_A = loss_G_A.data[0]
-        self.loss_G_B = loss_G_B.data[0]
-        self.loss_cycle_A = loss_cycle_A.data[0]
-        self.loss_cycle_B = loss_cycle_B.data[0]
-
-    def optimize_parameters(self):
+    def optimize_parameters(self,init_tensor):
         # forward
         self.forward()
-        # G_A and G_B
-        self.optimizer_G.zero_grad()
-        self.backward_G()
-        self.optimizer_G.step()
-        # D_A
-        self.optimizer_D_A.zero_grad()
-        self.backward_D_A()
-        self.optimizer_D_A.step()
-        # D_B
-        self.optimizer_D_B.zero_grad()
-        self.backward_D_B()
-        self.optimizer_D_B.step()
+        
+        if init_tensor == True:
+        	self.backward_G_init()
+        else:
+        	# G
+	    	self.optimizer_G.zero_grad()
+	    	self.backward_G()
+	    	self.optimizer_G.step()
+	    	
+	    	# D
+	    	self.optimizer_D.zero_grad()
+	    	self.backward_D()
+	    	self.optimizer_D.step()
+
 
     def get_current_errors(self):
-        ret_errors = OrderedDict([('D_A', self.loss_D_A), ('G_A', self.loss_G_A), ('Cyc_A', self.loss_cycle_A),
-                                  ('D_B', self.loss_D_B), ('G_B', self.loss_G_B), ('Cyc_B', self.loss_cycle_B)])
-        if self.opt.lambda_identity > 0.0:
-            ret_errors['idt_A'] = self.loss_idt_A
-            ret_errors['idt_B'] = self.loss_idt_B
+    	ret_errors = OrderedDict([('D', self.loss_D), ('G', self.loss_G), ('Idt', self.loss_idt)])
         return ret_errors
 
     def get_current_visuals(self):
-        real_A = util.tensor2im(self.input_A)
-        fake_B = util.tensor2im(self.fake_B)
-        rec_A = util.tensor2im(self.rec_A)
-        real_B = util.tensor2im(self.input_B)
-        fake_A = util.tensor2im(self.fake_A)
-        rec_B = util.tensor2im(self.rec_B)
-        ret_visuals = OrderedDict([('real_A', real_A), ('fake_B', fake_B), ('rec_A', rec_A),
-                                   ('real_B', real_B), ('fake_A', fake_A), ('rec_B', rec_B)])
-        if self.opt.isTrain and self.opt.lambda_identity > 0.0:
-            ret_visuals['idt_A'] = util.tensor2im(self.idt_A)
-            ret_visuals['idt_B'] = util.tensor2im(self.idt_B)
+    	img_init = util.tensor2im(self.img_init_save)
+    	img_cur = util.tensor2im(self.img_cur_save)
+    	img_predict = util.tensor2im(self.img_predict_save)
+
+        ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
         return ret_visuals
 
     def save(self, label):
-        self.save_network(self.netG_A, 'G_A', label, self.gpu_ids)
-        self.save_network(self.netD_A, 'D_A', label, self.gpu_ids)
-        self.save_network(self.netG_B, 'G_B', label, self.gpu_ids)
-        self.save_network(self.netD_B, 'D_B', label, self.gpu_ids)
+    	self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
+    	self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)
+    	self.save_network(self.netWordEmbed, 'WordEmbed', label, self.gpu_ids)
+    	self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
+    	self.save_network(self.netD, 'Discriminator', label, self.gpu_ids)

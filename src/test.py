@@ -20,12 +20,15 @@ if __name__ == '__main__':
     # create website
     web_dir = os.path.join(opt.results_dir, opt.name, '%s_%s' % (opt.phase, opt.which_epoch))
     webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.name, opt.phase, opt.which_epoch))
+    
     # test
+    init_tensor = True
     for i, data in enumerate(dataset):
         if i >= opt.how_many:
             break
         model.set_input(data)
-        model.test()
+        model.test(init_tensor)
+        init_tensor=False
         visuals = model.get_current_visuals()
         img_path = model.get_image_paths()
         print('%04d: process image... %s' % (i, img_path))
