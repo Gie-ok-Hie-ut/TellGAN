@@ -67,7 +67,7 @@ class Video(object):
 def main():
 
     vpath = '/home/jake/classes/cs703/Project/data/grid/vid/s1/lgaz8p.mpg'
-    tpath = '/home/jake/classes/cs703/Project/data/grid/anno/align/lgaz8p.align'
+    tpath = '/home/jake/classes/cs703/Project/data/grid/align/lgaz8p.align'
 
     video = Video(vpath, tpath)
 
@@ -80,6 +80,7 @@ def main():
     for i in range(0, len(video.frames)):
         frame = cv2.cvtColor(video.frames[i],cv2.COLOR_BGR2RGB) #this code do color conversion
         cv2.imshow('frame', frame)
+        print("frame shape: ", frame.shape)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

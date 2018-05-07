@@ -98,6 +98,7 @@ class GRID(data.Dataset):
         print("loading video: %s" % vid_path )
         print("loading aligns: %s" % anno_path )
 
+        # each frame is (288, 360, 3) by default
         video = Video(vid_path, anno_path, self.transform, self.target_transform)
 
         #TODO: If we want Transforms for video frames
@@ -136,7 +137,8 @@ class GRID(data.Dataset):
 #     return [data,target]
 
 def main():
-    frame_transforms = transforms.Compose([LocalizeFace()])
+    #frame_transforms = transforms.Compose([LocalizeFace()])
+    frame_transforms = transforms.Compose([LocalizeFace(height=150,width=150)])
 
     data_path = '/home/jake/classes/cs703/Project/data/grid/'
     loader = GRID(data_path, transform=frame_transforms)
@@ -150,6 +152,8 @@ def main():
         count += 1
         for idx, (frame, word) in enumerate(video):
             print("Frame: %s Word: %s" % (idx, word))
+            width, height = frame.size
+            print("Frame size: w=", width, ", h=", height)
             frame.show()
             # Only testing
             break

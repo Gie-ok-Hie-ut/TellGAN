@@ -9,10 +9,17 @@ class LocalizeFace(object):
     """
 
 
-    def __init__(self): #, predictor_path):
+    def __init__(self, height=None, width=None): #, predictor_path):
+        """
+        For GRID each frame is (288, 360, 3) by default, the height/width options force the bounding boxes
+        to be a specific size.
+        """
+
         #self.predictor_path = predictor_path
 
         self.detector = dlib.get_frontal_face_detector()
+        self.height = height
+        self.width = width
 
         # Predictor only used to predict facial features, used for localizing mouth??
         #self.predictor = dlib.shape_predictor(self.predictor_path)
@@ -47,6 +54,32 @@ class LocalizeFace(object):
 
         if bb is None:
             return img
+
+        print("bb: ", bb)
+        if self.width is not None:
+            (x0,y0,x1,y1) = bb
+            face_w = x1 - x0
+
+            cx = x0 + face_w//2
+
+            new_x0 = cx - self.width//2
+            new_x1 = new_x0 + self.width
+
+            bb = (new_x0, y0, new_x1, y1)
+
+        if self.height is not None:
+            (x0,y0,x1,y1) = bb
+
+            face_h = y1 - y0
+
+            cy = y0 + face_h//2
+
+            new_y0 = cy - self.height//2
+            new_y1 = new_y0 + self.height
+
+            bb = (x0, new_y0, x1, new_y1)
+
+        print("new_bb: ", bb)
 
         face_crop = img.crop(bb)
 
