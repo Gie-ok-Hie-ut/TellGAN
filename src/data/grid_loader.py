@@ -5,6 +5,7 @@ import sys
 import torch
 import torch.utils.data as data
 from PIL import Image, ImageDraw
+from torchvision import datasets, models, transforms
 
 import numpy as np
 
@@ -12,6 +13,7 @@ from os import listdir
 from os import walk
 
 from video.video import Video
+from video.transform.localizeface import LocalizeFace
 
 '''
 Grid Dataset:
@@ -35,8 +37,11 @@ class GRID(data.Dataset):
             (default: 'VOC2007')
     """
 
-    def __init__(self, root): #, transform=None, target_transform=None):
+    def __init__(self, root, transform=None, target_transform=None):
         self.root = root
+        self.transform = transform
+        self.target_transform = target_transform
+
         self.vid_dir = 'vid'
         self.anno_dir = 'align'
         #self.transform = transform
@@ -93,7 +98,8 @@ class GRID(data.Dataset):
         print("loading video: %s" % vid_path )
         print("loading aligns: %s" % anno_path )
 
-        video = Video(vid_path, anno_path)
+        # each frame is (288, 360, 3) by default
+        video = Video(vid_path, anno_path, self.transform, self.target_transform)
 
         #TODO: If we want Transforms for video frames
         # Set transforms in video and have to it in getItem!!
@@ -131,19 +137,23 @@ class GRID(data.Dataset):
 #     return [data,target]
 
 def main():
+    #frame_transforms = transforms.Compose([LocalizeFace()])
+    frame_transforms = transforms.Compose([LocalizeFace(height=150,width=150)])
 
     data_path = '/home/jake/classes/cs703/Project/data/grid/'
-    loader = GRID(data_path)
+    loader = GRID(data_path, transform=frame_transforms)
 
     count = 0
 
     for video in loader:
         # Only testing
-        if count > 10:
+        if count > 1:
             return
         count += 1
         for idx, (frame, word) in enumerate(video):
             print("Frame: %s Word: %s" % (idx, word))
+            width, height = frame.size
+            print("Frame size: w=", width, ", h=", height)
             frame.show()
             # Only testing
             break
