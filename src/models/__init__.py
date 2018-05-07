@@ -13,6 +13,10 @@ def create_model(opt):
         assert(opt.dataset_mode == 'single')
         from .test_model import TestModel
         model = TestModel()
+    elif opt.model == 'tell_gan':
+        assert(opt.dataset_mode == 'aligned')
+        from .tell_gan_model import TellGANModel
+        model = TellGANModel()
     else:
         raise NotImplementedError('model [%s] not implemented.' % opt.model)
     model.initialize(opt)

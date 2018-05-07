@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=4 python train.py --dataroot /data1/color_enhance/	 --name tellgan_ver1 --model tell_gan

@@ -20,6 +20,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
+        init_tensor=True
         for i, data in enumerate(dataset):
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
@@ -28,7 +29,9 @@ if __name__ == '__main__':
             total_steps += opt.batchSize
             epoch_iter += opt.batchSize
             model.set_input(data)
-            model.optimize_parameters()
+
+            model.optimize_parameters(init_tensor)
+            init_tensor=False
 
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
@@ -56,3 +59,4 @@ if __name__ == '__main__':
         print('End of epoch %d / %d \t Time Taken: %d sec' %
               (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
         model.update_learning_rate()
+

@@ -105,34 +105,49 @@ def get_scheduler(optimizer, opt):
 
 # Define Network
 def define_ImgEncoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
-    netImgIncoder = None
+    netImgEncoder = None
     use_gpu = len(gpu_ids) > 0
     norm_layer = get_norm_layer(norm_type=norm)
 
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    which_model_netG = 'resnet_3blocks':
-
-    if which_model_netG == 'resnet_3blocks':
-        netImgIncoder = ResnetGenerator_Encoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
+    if which_model_netG == 'resnet_3blocks_enc':
+        netImgEncoder = ResnetGenerator_Encoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
     else:
         raise NotImplementedError('ImgEncoder model name [%s] is not recognized' % which_model_netG)
 
     if len(gpu_ids) > 0:
-        netImgIncoder.cuda(gpu_ids[0])
+        netImgEncoder.cuda(gpu_ids[0])
 
-    init_weights(netImgIncoder, init_type=init_type)
+    init_weights(netImgEncoder, init_type=init_type)
 
-    return netImgIncoder
+    return netImgEncoder
 
+# Define Network
+def define_ImgDecoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+    netImgDecoder = None
+    use_gpu = len(gpu_ids) > 0
+    norm_layer = get_norm_layer(norm_type=norm)
 
-def define_ConvLSTM(input_size,
-                   input_dim,
-                   num_layers,
-                   hidden_dim,
-                   kernel_size,
-                   gpu_ids=[]):
+    if use_gpu:
+        assert(torch.cuda.is_available())
+
+    which_model_netG = 'resnet_3blocks_dec'
+
+    if which_model_netG == 'resnet_3blocks_dec':
+        netImgDecoder = ResnetGenerator_Decoder_Summation(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
+    else:
+        raise NotImplementedError('ImgEncoder model name [%s] is not recognized' % which_model_netG)
+
+    if len(gpu_ids) > 0:
+        netImgDecoder.cuda(gpu_ids[0])
+
+    init_weights(netImgDecoder, init_type=init_type)
+
+    return netImgDecoder
+
+def define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_ids=[]):
 
     convLSTM = None
     use_gpu = len(gpu_ids) > 0
@@ -140,11 +155,7 @@ def define_ConvLSTM(input_size,
     if use_gpu:
         assert (torch.cuda.is_available())
 
-    convLSTM = ConvLSTM(input_size=input_size,
-                          input_dim=input_dim,
-                          hidden_dim=hidden_dim,
-                          kernel_size=kernel_size,
-                          num_layers=num_layers)
+    convLSTM = ConvLSTM(input_size=input_size,input_dim=input_dim,hidden_dim=hidden_dim,kernel_size=kernel_size,num_layers=num_layers)
 
     if len(gpu_ids) > 0:
         convLSTM.cuda(gpu_ids[0])
@@ -155,40 +166,17 @@ def define_ConvLSTM(input_size,
     return convLSTM
 
 
-def define_ImgLSTM(use_dropout=False, init_type='normal', gpu_ids=[]):
-    netImgLSTM = None
-    use_gpu = len(gpu_ids) > 0
-    norm_layer = get_norm_layer(norm_type=norm)
-
-    if use_gpu:
-        assert (torch.cuda.is_available())
-
-    which_model_LSTM = 'ordinary_lstm':
-
-    if which_model_LSTM == 'ordinary_lstm':
-        netImgLSTM = ImgLSTM()
-    else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
-
-    if len(gpu_ids) > 0:
-        netImgLSTM.cuda(gpu_ids[0])
-
-    init_weights(netImgLSTM, init_type=init_type)
-
-    return netImgLSTM
-
-def define_WordEmbed(use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_WordEmbed(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_ids=[]):
     netWordEmbed = None
     use_gpu = len(gpu_ids) > 0
-    norm_layer = get_norm_layer(norm_type=norm)
 
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    which_model_LSTM = 'ordinary_lstm':
+    which_model_wordembed = 'OneHotVector'
 
-    if which_model_LSTM == 'ordinary_lstm':
-        netWordEmbed = ImgLSTM()
+    if which_model_wordembed == 'OneHotVector':
+        netWordEmbed = WordEmbed()
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
 
@@ -198,7 +186,6 @@ def define_WordEmbed(use_dropout=False, init_type='normal', gpu_ids=[]):
     init_weights(netWordEmbed, init_type=init_type)
     
     return netWordEmbed
-
 
 
 def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
@@ -225,8 +212,7 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
     return netG
 
 
-def define_D(input_nc, ndf, which_model_netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
+def define_D(input_nc, ndf, which_model_netD,n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
     netD = None
     use_gpu = len(gpu_ids) > 0
     norm_layer = get_norm_layer(norm_type=norm)
@@ -301,64 +287,16 @@ class GANLoss(nn.Module):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
 
-class Tell_Decoder(torch.nn.Module):
-    def __init__(self,initial_image,output_lstm):
-        super(Tell_Decoder, self).__init__()
-
+class ResnetGenerator_Decoder_Summation(torch.nn.Module):
+    def __init__(self,input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, gpu_ids=[], padding_type='reflect'):
+        super(ResnetGenerator_Decoder_Summation, self).__init__()
         #Size should be changed
-        self.Decoder = ResnetGenerator_Decoder_ext1(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
+        self.Decoder = ResnetGenerator_Decoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
 
-
-    def forward(self, input):
-        output_transition = self.Decoder.forward(input)
-        output_result = torch.sum(output_image) + output_transition
-
+    def forward(self, input_init, input_output):
+        output_transition = self.Decoder.forward(input_output)
+        output_result = input_init + output_transition
         return output_result
-
-
-
-#https://github.com/TJCVRS/CRNN_Tensorflow/blob/master/crnn_model/crnn_model.py
-class ImgLSTM(nn.Module):
-    def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):
-        super(ImgLSTM, self).__init__()
-        
-        #Setting
-        self.gpu_ids = gpu_ids
-
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-
-
-        #Network
-        self.net = [nn.LSTM(in_size,classes_no,2)]
-
-
-        self.net = nn.Sequential(*self.net)
-
-    def forward(self, input):
-        if len(self.gpu_ids) and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
-        else:
-            return self.net(input)
-
-#Sample
-class DividedGenerator(torch.nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=9, gpu_ids=[], padding_type='reflect'):
-        super(DividedGenerator, self).__init__()
-        self.netGE = ResnetGenerator_Encoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
-        self.netGD = ResnetGenerator_Decoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
-
-    def forward(self, input):
-        return self.netGD.forward(self.netGE.forward(input))
-
-    def getGE(self):
-        return self.netGE
-
-    def getGD(self):
-        return self.netGD
 
 
 #Currently 256*256*3 -> 64 * 64 * 256
@@ -390,8 +328,6 @@ class ResnetGenerator_Encoder(nn.Module):
                       norm_layer(ngf * mult * 2),
                       nn.ReLU(True)]
 
-
-
         mult = 2**n_downsampling
         for i in range(n_blocks):
             model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
@@ -409,52 +345,6 @@ class ResnetGenerator_Decoder(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, gpu_ids=[], padding_type='reflect'):
         assert(n_blocks >= 0)
         super(ResnetGenerator_Decoder, self).__init__()
-        self.input_nc = input_nc
-        self.output_nc = output_nc
-        self.ngf = ngf
-        self.gpu_ids = gpu_ids
-
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        model = []
-
-        n_downsampling = 2
-
-        mult = 2**n_downsampling
-        for i in range(n_blocks):
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-
-
-        for i in range(n_downsampling):
-            mult = 2**(n_downsampling - i)
-            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
-                                         kernel_size=3, stride=2,
-                                         padding=1, output_padding=1,
-                                         bias=use_bias),
-                      norm_layer(int(ngf * mult / 2)),
-                      nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)] #Why not ConvTranspose2d?
-        
-        #Delete this line for Affine Transformation
-        #model += [nn.Tanh()]
-
-        self.model_de = nn.Sequential(*model)
-
-    def forward(self, input):
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model_de, input, self.gpu_ids)
-        else:
-            return self.model_de(input)
-
-class ResnetGenerator_Decoder_ext1(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, gpu_ids=[], padding_type='reflect'):
-        assert(n_blocks >= 0)
-        super(ResnetGenerator_Decoder_ext1, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
