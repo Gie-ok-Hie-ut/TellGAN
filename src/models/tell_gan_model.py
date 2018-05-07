@@ -6,6 +6,7 @@ import util.util as util
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
+import numpy as np
 
 
 class TellGANModel(BaseModel):
@@ -17,8 +18,20 @@ class TellGANModel(BaseModel):
 
         self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         self.netImgLSTM = networks.define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,self.gpu_ids):
-        self.netWordEmbed = networks.define_WordEmbed(input_size,input_dim,num_layers,hidden_dim,kernel_size,self.gpu_ids)
+        #self.netWordEmbed = networks.define_WordEmbed(64,64,1)
         self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        
+        #Load Dictionary
+        self.dic_size=500
+        self.dictionary = {'default':0}
+        try:
+            np.load('grid_embedding.npy').item()
+            print "[Dictionary] Loading Existing Embedding Dictionary"
+
+        except IOError as e:
+            print "[Dictionary] Building New Word Embedding Dictionary"
+
+
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
@@ -28,7 +41,7 @@ class TellGANModel(BaseModel):
             which_epoch = opt.which_epoch
             self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
             self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
-            self.load_network(self.netWordEmbed, 'WordEmbed', which_epoch)
+            #self.load_network(self.netWordEmbed, 'WordEmbed', which_epoch)
             self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
 
             if self.isTrain:
@@ -36,15 +49,12 @@ class TellGANModel(BaseModel):
 
 
         if self.isTrain:
-            self.fake_A_pool = ImagePool(opt.pool_size)
-            self.fake_B_pool = ImagePool(opt.pool_size)
-
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
             self.criterionIdt = torch.nn.L1Loss() #L1 Loss Okay?
 
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(), self.netWordEmbed.parameters(),self.netImgDecoder.parameters()),lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(),self.netImgDecoder.parameters()),lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers = []
             self.schedulers = []
@@ -57,7 +67,7 @@ class TellGANModel(BaseModel):
         print('---------- Networks initialized -------------')
         networks.print_network(self.netImgEncoder)
         networks.print_network(self.netImgLSTM)
-        networks.print_network(self.netWordEmbed)
+        #networks.print_network(self.netWordEmbed)
         networks.print_network(self.netImgDecoder)
         if self.isTrain:
             networks.print_network(self.netD)
@@ -78,6 +88,19 @@ class TellGANModel(BaseModel):
     def forward(self):
         self.img_input = Variable(self.input_frame)
         self.word_input = Variable(self.input_transcription)
+
+    def Word2Tensor(self,word,width,height):
+        word_cur = word
+
+        # Update unseen word
+        if self.dictionary.get(word_cur,-1) == -1:
+            self.dictionary.update({word_cur:float((len(dictionary)+1))/dic_size})
+
+        # Make Tensor
+        vec2np = np.full((width,height),self.dictionary[word_cur])
+        np2tensor = torch.from_numpy(vec2np)
+        
+        return np2tensor
 
 
     def test(self,init_tensor):
@@ -106,7 +129,7 @@ class TellGANModel(BaseModel):
 	    	self.word_cur = self.word_input
 
 	    	self.img_cur_enc = self.netImgEncoder(self.img_predict)
-	    	self.word_cur_enc = self.netWordEmbed(self.word_cur)
+	    	self.word_cur_enc = self.Word2Tensor(self.word_cur,64,64)
 
 	    	self.img_enc_stack = torch.cat((self.img_enc_stack,self.img_cur_enc),1)
 	    	self.word_enc_stack = torch.cat((self.word_enc_stack,self.word_cur_enc),1)
@@ -147,7 +170,7 @@ class TellGANModel(BaseModel):
     	self.word_init = self.word_input
 
     	self.img_cur_enc = self.netImgEncoder(self.img_init)
-    	self.word_cur_enc = self.netWordEmbed(self.word_init)
+    	self.word_cur_enc = self.Word2Tensor(self.word_init,64,64)
 
     	self.img_enc_stack = self.img_cur_enc
     	self.word_enc_stack = 0 # Is it okay to use 0?
@@ -188,7 +211,7 @@ class TellGANModel(BaseModel):
     	self.word_cur = self.word_input
 
     	self.img_cur_enc = self.netImgEncoder(self.img_cur)
-    	self.word_cur_enc = self.netWordEmbed(self.word_cur)
+    	self.word_cur_enc = self.Word2Tensor(self.word_cur,64,64)
 
         # Stack Before
         self.img_enc_stack
@@ -256,6 +279,8 @@ class TellGANModel(BaseModel):
     def save(self, label):
     	self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
     	self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)
-    	self.save_network(self.netWordEmbed, 'WordEmbed', label, self.gpu_ids)
+    	#self.save_network(self.netWordEmbed, 'WordEmbed', label, self.gpu_ids)
     	self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
     	self.save_network(self.netD, 'Discriminator', label, self.gpu_ids)
+
+        np.save('grid_embedding.npy',self.dictionary)
