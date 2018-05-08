@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader
 if __name__ == '__main__':
     opt = TrainOptions().parse()
 
-    normMean = [0.49139968, 0.48215827, 0.44653124]
-    normStd = [0.24703233, 0.24348505, 0.26158768]
-    normTransform = transforms.Normalize(normMean, normStd)
+    #normMean = [0.49139968, 0.48215827, 0.44653124]
+    #normStd = [0.24703233, 0.24348505, 0.26158768]
+    #normTransform = transforms.Normalize(normMean, normStd)
 
     frame_transforms = transforms.Compose([
         LocalizeFace(height=150,width=150),

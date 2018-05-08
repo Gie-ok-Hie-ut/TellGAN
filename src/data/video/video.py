@@ -58,6 +58,8 @@ class Video(object):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
+        #print("PIL Tensor",pil_img)
+
         return pil_img, target
 
 
