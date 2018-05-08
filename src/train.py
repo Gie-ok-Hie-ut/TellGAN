@@ -13,10 +13,10 @@ if __name__ == '__main__':
 
     frame_transforms = transforms.Compose([LocalizeFace(height=150,width=150)])
 
-    dataset = GRID(opt.dataroot, transform=frame_transforms)
-    dataLoader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
+    video_dataset = GRID(opt.dataroot, transform=frame_transforms)
+    #dataLoader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
 
-    dataset_size = len(dataset)
+    dataset_size = len(video_dataset)
     print('#training images = %d' % dataset_size)
 
     model = create_model(opt)
@@ -28,7 +28,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx, video in enumerate(dataLoader):
+        for vid_idx, video in enumerate(video_dataset):
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
