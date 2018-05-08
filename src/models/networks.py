@@ -147,6 +147,27 @@ def define_ImgDecoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', 
 
     return netImgDecoder
 
+class NextFrameConvLSTM(ConvLSTM):
+    def forward(self, input, hidden_state=None):
+
+        # ConvLSTM takes (b, t, c, h, w), encoder out/decoder in uses (t, h, w, c)
+        # Using pytorch to Permute dimensions  (b, t, h, w, c) -> (t, c, h, w)
+
+        # Add batch dim with unsqueeze and Rearrange dim
+        seq_input = input.unsqueeze(0).permute(0, 1, 4, 2, 3)
+
+        # Feet into LSTM
+        output, hidden_state = super(NextFrameConvLSTM, self).forward(seq_input, hidden_state)
+
+        # Permute dimensions back to (b, t, c, h, w) -> (b, t, h, w, c)
+        # and remove batch dim -> (t, h, w, c)
+        convlstm_output = output.permute(0, 1, 3, 4, 2).squeeze(0)
+
+        predicted_change = convlstm_output[-1]
+
+        # I don't think we need weights (hidden_state)
+        return predicted_change #, hidden_state
+
 def define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_ids=[]):
 
     convLSTM = None
@@ -155,7 +176,9 @@ def define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_i
     if use_gpu:
         assert (torch.cuda.is_available())
 
-    convLSTM = ConvLSTM(input_size=input_size,input_dim=input_dim,hidden_dim=hidden_dim,kernel_size=kernel_size,num_layers=num_layers)
+    convLSTM = NextFrameConvLSTM(input_size=input_size,input_dim=input_dim,
+                            num_layers=num_layers,hidden_dim=hidden_dim,
+                            kernel_size=kernel_size, batch_first=True)
 
     if len(gpu_ids) > 0:
         convLSTM.cuda(gpu_ids[0])
