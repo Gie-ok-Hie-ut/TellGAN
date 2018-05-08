@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 class Transcript(object):
     def __init__(self, path=None):
