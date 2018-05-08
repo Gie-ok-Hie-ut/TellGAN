@@ -127,8 +127,7 @@ class TellGANModel(BaseModel):
 	    	# Redundant
 	    	self.img_predict = img_input
 
-
-	    else:
+        else:
 	    	# Predict Current Img
 	    	self.word_cur = self.word_input
 
@@ -138,10 +137,10 @@ class TellGANModel(BaseModel):
 	    	self.img_enc_stack = torch.stack((self.img_enc_stack,self.img_cur_enc),0)
 	    	self.word_enc_stack = torch.stack((self.word_enc_stack,self.word_cur_enc),0)
 
-            self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),1) # Stack Input
-	    	self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+            self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),1)
+            self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
-	    	self.img_predict = self.netImgDecoder(self.img_init,self.convlstm_output)
+            self.img_predict = self.netImgDecoder(self.img_init,self.convlstm_output)
 
 
 	    self.img_init_save = self.img_init.data
