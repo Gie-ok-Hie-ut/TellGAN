@@ -56,7 +56,7 @@ class LocalizeFace(object):
         if bb is None:
             return img
 
-        print("bb: ", bb)
+        
         if self.width is not None:
             (x0,y0,x1,y1) = bb
             face_w = x1 - x0
@@ -80,7 +80,7 @@ class LocalizeFace(object):
 
             bb = (x0, new_y0, x1, new_y1)
 
-        print("new_bb: ", bb)
+      
 
         face_crop = img.crop(bb)
 

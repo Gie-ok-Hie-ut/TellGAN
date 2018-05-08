@@ -14,6 +14,7 @@ class TellGANModel(BaseModel):
         return 'TellGANModel'
 
     def initialize(self, opt):
+
         BaseModel.initialize(self, opt)
 
         self.lstm_in_dim = (64, 64)
@@ -31,15 +32,13 @@ class TellGANModel(BaseModel):
 
         # Load Dictionary
         self.dic_size = 500
-        self.dictionary = {'default': 0}
         try:
-            np.load('grid_embedding.npy').item()
-            print
-            "[Dictionary] Loading Existing Embedding Dictionary"
-
+            self.dictionary = np.load('grid_embedding.npy').item()
+            print "[Dictionary] Loading Existing Embedding Dictionary"
         except IOError as e:
-            print
-            "[Dictionary] Building New Word Embedding Dictionary"
+            self.dictionary = {'default': 0}
+            print "[Dictionary] Building New Word Embedding Dictionary"
+
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
@@ -254,7 +253,7 @@ def backward_G(self):
     self.loss_idt = loss_idt.data[0]
 
 
-def optimize_parameters(self, init_tensor):
+def optimize_parameters(self,init_tensor=True):
     # forward
     self.forward()
 

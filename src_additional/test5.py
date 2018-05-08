@@ -7,15 +7,18 @@ import torch.nn as nn
 
 
 try:
-	np.load('grid_embedding.npy').item()
+	dictionary = np.load('grid_embedding.npy').item()
 	print "[Dictionary] Loading Existing Embedding Dictionary"
 
 except IOError as e:
+	dictionary = {'new':-1}
 	print "[Dictionary] Building New Word Embedding Dictionary"
 
-word = ['hello','world','everyone','good','morning','new','world2','good','bad','good','ki']
+#word = ['hello','world','everyone','good','morning','new','world2','good','bad','good','ki']
+word = ['ello','wod','evne','od','morn','new','wod2','gd','bad','good','ki']
+word = ['el','wo','vne','o','mon','nw','wod2','gd','bad','go','ki']
 
-dictionary = {'new':-1}
+
 
 dictionary_size=100
 for i in range(0,11):
