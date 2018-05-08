@@ -14,7 +14,7 @@ def create_model(opt):
         from .test_model import TestModel
         model = TestModel()
     elif opt.model == 'tell_gan':
-        assert(opt.dataset_mode == 'aligned')
+        assert(opt.dataset_mode == 'unaligned')
         from .tell_gan_model import TellGANModel
         model = TellGANModel()
     else:

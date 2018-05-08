@@ -3,8 +3,8 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
 from util.visualizer import Visualizer
-from .data.video.transform.localizeface import LocalizeFace
-from .data.grid_loader import GRID
+from data.video.transform.localizeface import LocalizeFace
+from data.grid_loader import GRID
 from torchvision import transforms
 
 if __name__ == '__main__':
