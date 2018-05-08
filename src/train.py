@@ -15,7 +15,7 @@ if __name__ == '__main__':
     #normTransform = transforms.Normalize(normMean, normStd)
 
     frame_transforms = transforms.Compose([
-        LocalizeFace(height=150,width=150),
+        LocalizeFace(height=256,width=256),
         transforms.ToTensor()#,
         #normTransform
     ])
@@ -43,11 +43,10 @@ if __name__ == '__main__':
             epoch_iter += opt.batchSize
 
             init_tensor=True
-
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
+                
                 model.set_input(frame)
-
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
 

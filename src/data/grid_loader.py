@@ -137,7 +137,7 @@ def main():
     #normTransform = transforms.Normalize(normMean, normStd)
 
     frame_transforms = transforms.Compose([
-        LocalizeFace(height=150,width=150),
+        LocalizeFace(height=256,width=256),
         transforms.ToTensor()#,
         #normTransform
     ])

@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=4 python train.py --dataroot /data1/color_enhance/	 --name maps_cyclegan --model cycle_gan --pool_size 50
+CUDA_VISIBLE_DEVICES=4 python train_original.py --dataroot /data1/color_enhance/	 --name maps_cyclegan --model cycle_gan --pool_size 50
