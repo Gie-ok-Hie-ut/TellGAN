@@ -4,8 +4,6 @@ import os.path
 import torch.utils.data as data
 from torchvision import transforms
 
-from torch.utils.data import DataLoader
-
 from os import walk
 
 from video.video import Video
@@ -33,15 +31,10 @@ class GRID(data.Dataset):
             (default: 'VOC2007')
     """
 
-    def __init__(self, root, transform=None, target_transform=None, batch=1, shuffle=False, num_workers=1):
+    def __init__(self, root, transform=None, target_transform=None):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
-
-        # Dataloader Params
-        self.batch = batch
-        self.shuffle = shuffle
-        self.num_workers = num_workers
 
         self.vid_dir = 'vid'
         self.anno_dir = 'align'
@@ -102,9 +95,17 @@ class GRID(data.Dataset):
         # each frame is (288, 360, 3) by default
         video = Video(vid_path, anno_path, self.transform, self.target_transform)
 
-        videoDL = DataLoader(video, batch_size=self.batch, shuffle=self.shuffle, num_workers=self.num_workers)
+        #TODO: If we want Transforms for video frames
+        # Set transforms in video and have to it in getItem!!
+        '''
+        if self.transform is not None:
+            img = self.transform(img)
 
-        return videoDL
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        '''
+
+        return video
 
     def __len__(self):
         return len(self.ids)
