@@ -131,7 +131,15 @@ class GRID(data.Dataset):
 
 def main():
     #frame_transforms = transforms.Compose([LocalizeFace()])
-    frame_transforms = transforms.Compose([LocalizeFace(height=150,width=150)])
+    # normMean = [0.49139968, 0.48215827, 0.44653124]
+    #normStd = [0.24703233, 0.24348505, 0.26158768]
+    #normTransform = transforms.Normalize(normMean, normStd)
+
+    frame_transforms = transforms.Compose([
+        LocalizeFace(height=150,width=150),
+        transforms.ToTensor()#,
+        #normTransform
+    ])
 
     data_path = '/home/jake/classes/cs703/Project/data/grid/'
     loader = GRID(data_path, transform=frame_transforms)
@@ -144,10 +152,10 @@ def main():
             return
         count += 1
         for idx, (frame, word) in enumerate(video):
-            print("Frame: %s Word: %s" % (idx, word))
-            width, height = frame.size
-            print("Frame size: w=", width, ", h=", height)
-            frame.show()
+            print("Word: %s \nFrame: %s" % (word, frame))
+            #width, height = frame.size
+            #print("Frame size: w=", width, ", h=", height)
+            #frame.show()
             # Only testing
             break
 
