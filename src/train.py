@@ -6,7 +6,6 @@ from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace
 from data.grid_loader import GRID
 from torchvision import transforms
-from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()
@@ -22,8 +21,6 @@ if __name__ == '__main__':
     ])
 
     dataset = GRID(opt.dataroot, transform=frame_transforms)
-    dataLoader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1)
-
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
@@ -36,7 +33,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx, video in enumerate(dataLoader):
+        for vid_idx, video in enumerate(dataset):
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
