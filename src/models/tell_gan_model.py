@@ -16,8 +16,13 @@ class TellGANModel(BaseModel):
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
 
+        self.lstm_in_dim = (64,64)
+        self.lstm_in_nc =257
+        self.lstm_out_nc = [256]
+        self.lstm_nlayers = 1
+        self.lstm_kernel_size = (3,3)
         self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgLSTM = networks.define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,self.gpu_ids):
+        self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size,self.gpu_ids)
         #self.netWordEmbed = networks.define_WordEmbed(64,64,1)
         self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec', opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         
@@ -130,10 +135,10 @@ class TellGANModel(BaseModel):
 	    	self.img_cur_enc = self.netImgEncoder(self.img_predict)
 	    	self.word_cur_enc = self.Word2Tensor(self.word_cur,64,64)
 
-	    	self.img_enc_stack = torch.cat((self.img_enc_stack,self.img_cur_enc),1)
-	    	self.word_enc_stack = torch.cat((self.word_enc_stack,self.word_cur_enc),1)
+	    	self.img_enc_stack = torch.stack((self.img_enc_stack,self.img_cur_enc),0)
+	    	self.word_enc_stack = torch.stack((self.word_enc_stack,self.word_cur_enc),0)
 
-	    	self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),0) # Stack Input
+            self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),1) # Stack Input
 	    	self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
 	    	self.img_predict = self.netImgDecoder(self.img_init,self.convlstm_output)
@@ -214,14 +219,14 @@ class TellGANModel(BaseModel):
 
         # Stack Before
         self.img_enc_stack
-    	self.word_enc_stack = torch.cat((self.word_enc_stack,self.word_cur_enc),1)
+    	self.word_enc_stack = torch.stack((self.word_enc_stack,self.word_cur_enc),0)
 
         # Lstm
-    	self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),0) # Stack Input
+    	self.convlstm_input = torch.cat((self.img_enc_stack,self.word_enc_stack),1) # Stack Input
     	self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
         # Stack After
-        self.img_enc_stack = torch.cat((self.img_enc_stack,self.img_cur_enc),1)
+        self.img_enc_stack = torch.stack((self.img_enc_stack,self.img_cur_enc),0)
         self.word_enc_stack
 
         #Final

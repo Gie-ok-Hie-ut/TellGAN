@@ -1,15 +1,9 @@
 from __future__ import print_function
 import os
 import os.path
-import sys
-import torch
 import torch.utils.data as data
-from PIL import Image, ImageDraw
-from torchvision import datasets, models, transforms
+from torchvision import transforms
 
-import numpy as np
-
-from os import listdir
 from os import walk
 
 from video.video import Video
