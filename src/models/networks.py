@@ -154,14 +154,16 @@ class NextFrameConvLSTM(ConvLSTM):
         # Using pytorch to Permute dimensions  (b, t, h, w, c) -> (t, c, h, w)
 
         # Add batch dim with unsqueeze and Rearrange dim
-        seq_input = input.unsqueeze(0).permute(0, 1, 4, 2, 3)
+        seq_input = input.unsqueeze(0)#.permute(0, 1, 4, 2, 3)
 
         # Feet into LSTM
         output, hidden_state = super(NextFrameConvLSTM, self).forward(seq_input, hidden_state)
 
         # Permute dimensions back to (b, t, c, h, w) -> (b, t, h, w, c)
         # and remove batch dim -> (t, h, w, c)
-        convlstm_output = output.permute(0, 1, 3, 4, 2).squeeze(0)
+        #convlstm_output = output.permute(0, 1, 3, 4, 2).squeeze(0)
+        convlstm_output = output.squeeze(0)
+
 
         predicted_change = convlstm_output[-1]
 
