@@ -35,7 +35,7 @@ class Video(object):
     def get_video_frames(self, path):
         #videogen = skvideo.io.vread(path)
         videogen = skvideo.io.vreader(path)
-        videometadata = skvideo.io.ffprobe(path)
+        #videometadata = skvideo.io.ffprobe(path)
         #num_frames = np.int(videometadata['video']['@nb_frames'])
         #frame_rate = videometadata['video']['@avg_frame_rate']
 

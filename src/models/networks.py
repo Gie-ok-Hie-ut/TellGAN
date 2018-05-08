@@ -113,7 +113,7 @@ def define_ImgEncoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', 
         assert(torch.cuda.is_available())
 
     if which_model_netG == 'resnet_3blocks_enc':
-        netImgEncoder = ResnetGenerator_Encoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
+        netImgEncoder = ResnetGenerator_Encoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
     else:
         raise NotImplementedError('ImgEncoder model name [%s] is not recognized' % which_model_netG)
 
@@ -136,7 +136,7 @@ def define_ImgDecoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', 
     which_model_netG = 'resnet_3blocks_dec'
 
     if which_model_netG == 'resnet_3blocks_dec':
-        netImgDecoder = ResnetGenerator_Decoder_Summation(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
+        netImgDecoder = ResnetGenerator_Decoder_Summation(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
     else:
         raise NotImplementedError('ImgEncoder model name [%s] is not recognized' % which_model_netG)
 
@@ -324,7 +324,7 @@ class ResnetGenerator_Decoder_Summation(torch.nn.Module):
 
 #Currently 256*256*3 -> 64 * 64 * 256
 class ResnetGenerator_Encoder(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=4, gpu_ids=[], padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=3, gpu_ids=[], padding_type='reflect'):
         assert(n_blocks >= 0)
         super(ResnetGenerator_Encoder, self).__init__()
         self.input_nc = input_nc
