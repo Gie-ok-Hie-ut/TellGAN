@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     frame_transforms = transforms.Compose([LocalizeFace(height=150,width=150)])
 
-    dataset = GRID(opt.dataset_path, transform=frame_transforms)
+    dataset = GRID(opt.dataroot, transform=frame_transforms)
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
