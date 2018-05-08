@@ -320,7 +320,12 @@ class ResnetGenerator_Decoder_Summation(torch.nn.Module):
 
     def forward(self, input_init, input_output):
         output_transition = self.Decoder.forward(input_output)
-        output_result = input_init + output_transition
+
+        # Added batch 3 * 150 * 150 -> 1 * 3 * 150 * 150
+        input_init_sq = input_init
+
+        output_result = input_init_sq + output_transition
+
         return output_result
 
 
