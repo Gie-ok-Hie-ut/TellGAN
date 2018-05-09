@@ -325,6 +325,7 @@ class ResnetGenerator_Decoder_Summation(torch.nn.Module):
         input_init_sq = input_init
 
         output_result = input_init_sq + output_transition
+        #output_result = input_init_sq
 
         return output_result
 

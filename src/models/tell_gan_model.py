@@ -96,6 +96,7 @@ class TellGANModel(BaseModel):
         self.img_input = Variable(self.input_frame)
         self.word_input = Variable(self.input_transcription)
 
+
     def Word2Tensor(self, word, width, height):
         word_cur = word
 
@@ -160,7 +161,7 @@ class TellGANModel(BaseModel):
 
     def backward_D_basic(self, netD, real, fake):
         # Real
-        pred_real = netD(real)
+        pred_real = netD(real.unsqueeze(0))
         loss_D_real = self.criterionGAN(pred_real, True)
         # Fake
         pred_fake = netD(fake.detach())
@@ -184,8 +185,9 @@ class TellGANModel(BaseModel):
         self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
         self.word_cur_enc = self.Word2Tensor(self.word_init, self.feature_size, self.feature_size)
 
+        self.word_enc_flag = True
         self.img_enc_stack = self.img_cur_enc
-        self.word_enc_stack = None  # Is it okay to use?
+        self.word_enc_stack = 0  # Is it okay to use?
 
         # Refresh All saved data
         self.convlstm_input = 0
@@ -215,17 +217,18 @@ class TellGANModel(BaseModel):
 
         # Stack Before
         self.img_enc_stack
-        if self.word_enc_stack == None:
+        if self.word_enc_flag == True:
             self.word_enc_stack = self.word_cur_enc
+            self.word_enc_flag = False
         else:
-            self.word_enc_stack = torch.stack((self.word_enc_stack, self.word_cur_enc), 0)
+            self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
 
         # Lstm
         self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
         self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
         # Stack After
-        self.img_enc_stack = torch.stack((self.img_enc_stack, self.img_cur_enc), 0)
+        self.img_enc_stack = torch.cat((self.img_enc_stack, self.img_cur_enc), 0)
         self.word_enc_stack
 
         # Final
@@ -248,18 +251,19 @@ class TellGANModel(BaseModel):
         # Save
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_cur.data
-        self.img_predict_save = img_predict.data
-        self.loss_G = loss_G.data[0]
-        self.loss_idt = loss_idt.data[0]
+        self.img_predict_save = self.img_predict.data
+        self.loss_G = self.loss_G.data[0]
+        self.loss_idt = self.loss_idt.data[0]
 
     def optimize_parameters(self, init_tensor = True):
         self.forward()
 
         if init_tensor == True:
-            print "[First Frame Initialized]"
+            print "[First Frame Initialization] True"
             self.backward_G_init()
         else:
             # G
+            print "[First Frame Initialization] False"
             self.optimizer_G.zero_grad()
             self.backward_G()
             self.optimizer_G.step()
