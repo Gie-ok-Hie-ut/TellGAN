@@ -59,7 +59,7 @@ class TellGANModel(BaseModel):
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
-            self.criterionIdt = torch.nn.L1Loss()  # L1 Loss Okay?
+            self.criterionIdt = torch.nn.MSELoss()  # L1 Loss Okay?
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(
@@ -158,7 +158,6 @@ class TellGANModel(BaseModel):
     def get_image_paths(self):
         return self.image_paths
 
-
     def backward_D_basic(self, netD, real, fake):
         # Real
         pred_real = netD(real.unsqueeze(0))
@@ -232,21 +231,19 @@ class TellGANModel(BaseModel):
         self.word_enc_stack
 
         # Final
-        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
-
-        print "Prediction Output"
-        print self.img_predict
+        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0)).squeeze(0)
 
         # Loss Weight
         weight_idt = 1
         weight_G = 1
 
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
-        #self.loss_idt = self.criterionIdt(self.img_cur, self.img_predict) * weight_idt
-        self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
+        #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
+        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur) * weight_idt
+        #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
 
         loss_total = self.loss_G + self.loss_idt
-        loss_total.backward()
+        loss_total.backward(retain_graph=True)
 
         # Save
         self.img_init_save = self.img_init.data
@@ -296,3 +293,6 @@ class TellGANModel(BaseModel):
         self.save_network(self.netD, 'Discriminator', label, self.gpu_ids)
 
         np.save('grid_embedding.npy', self.dictionary)
+
+    def mse_loss(self, input, target):
+        return torch.sum((input - target)**2) / input.data.nelement()
