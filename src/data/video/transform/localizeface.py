@@ -21,6 +21,7 @@ class LocalizeFace(object):
         self.detector = dlib.get_frontal_face_detector()
         self.height = height
         self.width = width
+        self.prev_bb = None
 
         # Predictor only used to predict facial features, used for localizing mouth??
         #self.predictor = dlib.shape_predictor(self.predictor_path)
@@ -39,7 +40,7 @@ class LocalizeFace(object):
         faces = self.detector(img_gray, 1)
 
         #print("Faces: ", len(faces))
-
+        bb = None
         for k, rect in enumerate(faces):
             #print("k: ", k)
             #print("rect: ", rect)
@@ -54,7 +55,10 @@ class LocalizeFace(object):
         #face_crop = img[rect.left():rect.right(), rect.top():rect.bottom()]
 
         if bb is None:
+            bb = self.prev_bb
             return img
+        else:
+            self.prev_bb = bb
 
         
         if self.width is not None:
