@@ -17,7 +17,7 @@ class TellGANModel(BaseModel):
 
         BaseModel.initialize(self, opt)
 
-        self.feature_size = 64
+        self.feature_size = 32
         self.lstm_in_dim = (self.feature_size, self.feature_size)
         self.lstm_in_nc = 257
         self.lstm_out_nc = [256]
@@ -32,7 +32,7 @@ class TellGANModel(BaseModel):
                                                         opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         # Load Dictionary
-        self.dic_size = 500
+        self.dic_size = 300
         try:
             self.dictionary = np.load('grid_embedding.npy').item()
             print "[Dictionary] Loading Existing Embedding Dictionary"
@@ -231,7 +231,6 @@ class TellGANModel(BaseModel):
         else:
             self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
 
-        # Lstm
         self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
         self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
