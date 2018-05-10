@@ -45,7 +45,12 @@ if __name__ == '__main__':
             init_tensor=True
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
-                
+
+                (img, trans) = frame
+                if trans is None:
+                    init_tensor=True
+                    continue
+
                 model.set_input(frame)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
