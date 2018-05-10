@@ -15,13 +15,13 @@ class Transcript(object):
 
         with open(path, 'r') as f:
             lines = f.readlines()
-        align = [Align(int(y[0])/1000, int(y[1])/1000, y[2]) for y in [x.strip().split(" ") for x in lines]]
+        self.aligns = [Align(int(y[0])/1000, int(y[1])/1000, y[2]) for y in [x.strip().split(" ") for x in lines]]
 
         # 'sil' means silence
         # 'sp' means there is video problem and should be skipped
         # remove buggy frames, but keep silence?
-        # self.align = self.strip(align, ['sp'])
-        self.aligns = self.strip(align, ["sp", "sil"])
+        #self.aligns = self.strip(align, ['sp'])
+        #self.aligns = self.strip(align, ["sp", "sil"])
 
         self.sentence = self.get_sentence()
 
