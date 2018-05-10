@@ -21,7 +21,14 @@ class LocalizeFace(object):
         self.detector = dlib.get_frontal_face_detector()
         self.height = height
         self.width = width
-        self.prev_bb = None
+
+        x1 = self.width if self.width is not None else 0
+        y1 = self.height if self.height is not None else 0
+
+        self.prev_bb = (0,0,x1,y1)
+
+
+
 
         # Predictor only used to predict facial features, used for localizing mouth??
         #self.predictor = dlib.shape_predictor(self.predictor_path)
