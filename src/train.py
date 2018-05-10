@@ -52,11 +52,13 @@ if __name__ == '__main__':
                     init_tensor=True
                     continue
 
+                if frame_idx%40 == 0:
+                    init_tensor=True
+
                 model.set_input(frame)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
-                if frame_idx%20 == 0:
-                    init_tensor=True
+
 
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0

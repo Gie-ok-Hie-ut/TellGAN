@@ -242,7 +242,7 @@ class TellGANModel(BaseModel):
         self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
 
         # Loss Weight
-        weight_idt = 3
+        weight_idt = 100
         weight_G = 1
 
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
