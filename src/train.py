@@ -15,7 +15,7 @@ if __name__ == '__main__':
     #normTransform = transforms.Normalize(normMean, normStd)
 
     frame_transforms = transforms.Compose([
-        LocalizeFace(height=256,width=256),
+        LocalizeFace(height=128,width=128),
         transforms.ToTensor()#,
         #normTransform
     ])
@@ -52,9 +52,6 @@ if __name__ == '__main__':
                 if frame_idx%20 == 0:
                     init_tensor=True
 
-            opt.display_freq=5
-            opt.print_freq=5
-            opt.save_latest_freq=5
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
                 visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
