@@ -20,8 +20,8 @@ class Transcript(object):
         # 'sil' means silence
         # 'sp' means there is video problem and should be skipped
         # remove buggy frames, but keep silence?
-        #self.aligns = self.strip(align, ['sp'])
-        #self.aligns = self.strip(align, ["sp", "sil"])
+        self.aligns = self.strip(self.aligns, ['sp'])
+        #self.aligns = self.strip(self.aligns, ["sp", "sil"])
 
         self.sentence = self.get_sentence()
 
