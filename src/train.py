@@ -49,7 +49,12 @@ if __name__ == '__main__':
                 model.set_input(frame)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
+                if frame_idx%20 == 0:
+                    init_tensor=True
 
+            opt.display_freq=5
+            opt.print_freq=5
+            opt.save_latest_freq=5
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
                 visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
