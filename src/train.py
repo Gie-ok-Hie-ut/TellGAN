@@ -13,9 +13,9 @@ if __name__ == '__main__':
     #normMean = [0.49139968, 0.48215827, 0.44653124]
     #normStd = [0.24703233, 0.24348505, 0.26158768]
     #normTransform = transforms.Normalize(normMean, normStd)
-
+    face_size=128
     frame_transforms = transforms.Compose([
-        LocalizeFace(height=128,width=128),
+        LocalizeFace(height=face_size,width=face_size),
         transforms.ToTensor()#,
         #normTransform
     ])
@@ -47,7 +47,8 @@ if __name__ == '__main__':
             for frame_idx, frame in enumerate(video):
 
                 (img, trans) = frame
-                if trans is None:
+                if img.size(1) is not face_size or img.size(2) is not face_size or trans is None:
+                    print "[Incomplete Frame came..]"
                     init_tensor=True
                     continue
 
