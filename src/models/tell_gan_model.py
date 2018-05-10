@@ -94,10 +94,11 @@ class TellGANModel(BaseModel):
 
     def forward(self):
         self.img_input = Variable(self.input_frame)
-        self.word_input = Variable(self.input_transcription)
 
+        self.word_tensor = self.Word2Tensor(self.input_transcription)
+        self.word_input = Variable(self.word_tensor)
 
-    def Word2Tensor(self, word, width, height):
+    def Word2Tensor(self, word):
         word_cur = word
 
         # Update unseen word
@@ -105,8 +106,15 @@ class TellGANModel(BaseModel):
             self.dictionary.update({word_cur: float((len(self.dictionary) + 1)) / self.dic_size})
 
         # Make Tensor
-        vec2np = np.full((width, height), self.dictionary[word_cur])
+        vec2np = np.full((1, 1), self.dictionary[word_cur])
         np2tensor = torch.from_numpy(vec2np).cuda().float()
+
+        return np2tensor
+
+    def ExpandTensor(self,tensor,width,height):
+        tensor_cur = tensor
+
+        np2tensor = tensor_cur.repeat(width,height)
 
         # Add One dim
         np2tensor_sq1 = np2tensor.unsqueeze(0)
@@ -182,7 +190,7 @@ class TellGANModel(BaseModel):
         self.word_init = self.word_input
 
         self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
-        self.word_cur_enc = self.Word2Tensor(self.word_init, self.feature_size, self.feature_size)
+        self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
         self.word_enc_flag = True
         self.img_enc_stack = self.img_cur_enc
@@ -207,7 +215,8 @@ class TellGANModel(BaseModel):
         self.word_cur = self.word_input
 
         self.img_cur_enc = self.netImgEncoder(self.img_cur.unsqueeze(0))     # Temporalily Added to make a form (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
-        self.word_cur_enc = self.Word2Tensor(self.word_cur, self.feature_size, self.feature_size)
+        self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
+        #self.word_cur_enc = self.word_cur
 
         #Input 
         # as (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
@@ -231,7 +240,7 @@ class TellGANModel(BaseModel):
         self.word_enc_stack
 
         # Final
-        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0)).squeeze(0)
+        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
 
         # Loss Weight
         weight_idt = 1
@@ -277,8 +286,8 @@ class TellGANModel(BaseModel):
 
 
     def get_current_visuals(self):
-        img_init = util.tensor2im(self.img_init_save)
-        img_cur = util.tensor2im(self.img_cur_save)
+        img_init = util.tensor2im(self.img_init_save.unsqueeze(0))
+        img_cur = util.tensor2im(self.img_cur_save.unsqueeze(0))
         img_predict = util.tensor2im(self.img_predict_save)
 
         ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
