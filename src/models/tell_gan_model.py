@@ -247,7 +247,7 @@ class TellGANModel(BaseModel):
 
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
-        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur) * weight_idt
+        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_idt
         #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
 
         loss_total = self.loss_G + self.loss_idt
