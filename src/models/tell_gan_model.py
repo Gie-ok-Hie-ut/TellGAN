@@ -124,80 +124,76 @@ class TellGANModel(BaseModel):
 
     def test(self, init_tensor):
 
-        #with torch.no_grad():
+        with torch.no_grad():
+            self.img_input = Variable(self.input_frame, volatile=True)
 
-        #img_input = Variable(self.input_frame, volatile=True)
-        #word_input = Variable(self.input_transcription, volatile=True)
+            self.word_tensor = self.Word2Tensor(self.input_transcription)
+            self.word_input = Variable(self.word_tensor, volatile=True)
 
-        self.img_input = Variable(self.input_frame, volatile=True)
+            if init_tensor == True:
+                '''
+                ' When tensor is initialized, we just reset the encoder sequence for the LSTM
+                ' to the init frame and return the given frame, as no prediction is needed
+                '''
+                self.img_init = self.img_input
+                self.word_init = self.word_input
 
-        self.word_tensor = self.Word2Tensor(self.input_transcription)
-        self.word_input = Variable(self.word_tensor, volatile=True)
+                # Different from Training.
+                self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
+                self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
-        if init_tensor == True:
-            '''
-            ' When tensor is initialized, we just reset the encoder sequence for the LSTM
-            ' to the init frame and return the given frame, as no prediction is needed
-            '''
-            self.img_init = self.img_input
-            self.word_init = self.word_input
+                self.word_enc_flag = True
+                self.img_enc_stack = self.img_cur_enc
+                self.word_enc_stack = 0  # Is it okay to use?
 
-            # Different from Training.
-            self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
-            self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
+                # Refresh All saved data
+                self.convlstm_input = 0
+                self.convlstm_output = 0
 
-            self.word_enc_flag = True
-            self.img_enc_stack = self.img_cur_enc
-            self.word_enc_stack = 0  # Is it okay to use?
+                # Redundant
+                self.img_predict = self.img_input.unsqueeze(0)
+                self.img_predict_save = self.img_predict.data
 
-            # Refresh All saved data
-            self.convlstm_input = 0
-            self.convlstm_output = 0
-
-            # Redundant
-            self.img_predict = self.img_input.unsqueeze(0)
-            self.img_predict_save = self.img_predict.data
-            #print "Predicted: {}".format(self.img_predict_save.size())
-
-        else:
-            '''
-            ' When Tensor has already been initialized, we must predict the next frame with the
-            ' initialized tensors. First we stack the word encodings to tell the network the word 
-            ' to be uttered predict the frame. Then concatinate the init image and word encondings
-            ' are fed to the LSTM which predicts the next frame encoding. The predicted encoding
-            ' is then stacked onto the image encoding stack for the next iteration. The predicted 
-            ' encoding is also fed into the decoder to produce the acutual frame.
-            '''
-            # Predict Current Img
-            self.img_cur = self.img_input
-            self.word_cur = self.word_input
-
-            # Temporalily Added to make a form (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
-            self.img_cur_enc = self.netImgEncoder(self.img_cur.unsqueeze(0))
-            self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
-
-            # Stack Before
-            #self.img_enc_stack
-            if self.word_enc_flag == True:
-                self.word_enc_stack = self.word_cur_enc
-                self.word_enc_flag = False
             else:
-                self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
+                '''
+                ' When Tensor has already been initialized, we must predict the next frame with the
+                ' initialized tensors. First we stack the word encodings to tell the network the word 
+                ' to be uttered predict the frame. Then concatinate the init image and word encondings
+                ' are fed to the LSTM which predicts the next frame encoding. The predicted encoding
+                ' is then stacked onto the image encoding stack for the next iteration. The predicted 
+                ' encoding is also fed into the decoder to produce the acutual frame.
+                '''
+                # Predict Current Img
+                self.img_cur = self.img_input
+                self.word_cur = self.word_input
 
-            self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
-            self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+                # Temporalily Added to make a form (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
+                self.img_cur_enc = self.netImgEncoder(self.img_cur.unsqueeze(0))
+                self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
 
-            # Stack predicted image encoding After
-            self.img_enc_stack = torch.cat((self.img_enc_stack, self.convlstm_output.unsqueeze(0)), 0)
-            # self.word_enc_stack
+                # Stack Before
+                #self.img_enc_stack
+                if self.word_enc_flag == True:
+                    self.word_enc_stack = self.word_cur_enc
+                    self.word_enc_flag = False
+                else:
+                    self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
 
-            self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
+                self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
+                self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
-            self.img_init_save = self.img_init.data
-            self.img_cur_save = self.img_input.data
-            self.img_predict_save = self.img_predict.data
+                # Stack predicted image encoding After
+                self.img_enc_stack = torch.cat((self.img_enc_stack, self.convlstm_output.unsqueeze(0)), 0)
+                # self.word_enc_stack
 
-        return util.tensor2im(self.img_predict_save)
+
+                self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
+
+                self.img_init_save = self.img_init.data
+                self.img_cur_save = self.img_input.data
+                self.img_predict_save = self.img_predict.data
+
+            return util.tensor2im(self.img_predict_save)
 
 
     # get image paths
