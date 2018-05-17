@@ -73,6 +73,8 @@ class TellGANModel(BaseModel):
 
             for optimizer in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
+        else:
+             self.criterionTest = torch.nn.MSELoss()
 
         print('---------- Networks initialized -------------')
         networks.print_network(self.netImgEncoder)
@@ -136,9 +138,9 @@ class TellGANModel(BaseModel):
                 ' to the init frame and return the given frame, as no prediction is needed
                 '''
                 self.img_init = self.img_input
+                self.img_cur = self.img_input
                 self.word_init = self.word_input
 
-                # Different from Training.
                 self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
                 self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
@@ -193,6 +195,7 @@ class TellGANModel(BaseModel):
                 self.img_cur_save = self.img_input.data
                 self.img_predict_save = self.img_predict.data
 
+            self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
             return util.tensor2im(self.img_predict_save)
 
 
@@ -314,7 +317,10 @@ class TellGANModel(BaseModel):
 
 
     def get_current_errors(self):
-        ret_errors = OrderedDict([('D', self.loss_D), ('G', self.loss_G), ('Idt', self.loss_idt)])
+        if self.isTrain:
+            ret_errors = OrderedDict([('D', self.loss_D), ('G', self.loss_G), ('Idt', self.loss_idt)])
+        else:
+            ret_errors = OrderedDict([('L', self.loss_test)])
         return ret_errors
 
 
