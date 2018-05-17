@@ -43,8 +43,8 @@ if __name__ == '__main__':
         if vid_idx >= opt.how_many:
             break
         init_tensor = True
-        vid_path = "/home/jake/classes/cs703/Project/dev/TellGAN/src/output/train/test_{0}.mp4"
-        writer = skvideo.io.FFmpegWriter("/home/jake/classes/cs703/Project/dev/TellGAN/src/output/train/test_{0}.mp4".format(vid_idx))
+        vid_path = "./output/test/test_{0}.mp4".format(vid_idx)
+        writer = skvideo.io.FFmpegWriter(vid_path)
 
         for frame_idx, frame in enumerate(video):
             (img, trans) = frame
