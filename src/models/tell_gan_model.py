@@ -48,9 +48,10 @@ class TellGANModel(BaseModel):
             self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.which_model_netD, opt.n_layers_D, opt.norm,
                                           use_sigmoid, opt.init_type, self.gpu_ids)
 
-            # 256 + 256 + 1 = 513 channels on input
-            dspeak_input_nc = 513
-            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, opt.which_model_netD, opt.n_layers_D, opt.norm,
+            # 3 + 1 = 4 channels on input
+            dspeak_input_nc = 3
+            dspeak_nlayers = 7
+            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, 'speak', dspeak_nlayers, opt.norm,
                                                 use_sigmoid, opt.init_type, self.gpu_ids)
 
         if not self.isTrain or opt.continue_train:

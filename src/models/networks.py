@@ -1,3 +1,4 @@
+from __future__ import division
 import torch
 import torch.nn as nn
 from torch.nn import init
@@ -248,6 +249,8 @@ def define_D(input_nc, ndf, which_model_netD,n_layers_D=3, norm='batch', use_sig
         netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
     elif which_model_netD == 'n_layers':
         netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
+    elif which_model_netD == 'speak':
+        netD = SpeakDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
     elif which_model_netD == 'pixel':
         netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
     else:
@@ -653,6 +656,68 @@ class NLayerDiscriminator(nn.Module):
         else:
             return self.model(input)
 
+# Defines the Speak discriminator with the specified arguments.
+class SpeakDiscriminator(nn.Module):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):
+        super(SpeakDiscriminator, self).__init__()
+        self.gpu_ids = gpu_ids
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        kw = 4
+        padw = 1
+        sequence = [
+            nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        nf_mult = 1
+        nf_mult_prev = 1
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2**n//2, 8)
+            stride = 2 if n%2 == 0 else 1
+            sequence += [
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=stride, padding=padw, bias=use_bias),
+                norm_layer(ndf * nf_mult),
+                nn.LeakyReLU(0.2, True)
+            ]
+
+        nf_mult_prev = nf_mult
+        nf_mult = min(2**n_layers, 8)
+        word_sequence = [
+            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                      kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+            norm_layer(ndf * nf_mult),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        out_sequence = [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+
+        if use_sigmoid:
+            out_sequence += [nn.Sigmoid()]
+
+        self.model = nn.Sequential(*sequence)
+        self.word_model = nn.Sequential(*word_sequence)
+        self.out_model = nn.Sequential(*out_sequence)
+
+    def forward(self, input):
+        image, word = input
+        if len(self.gpu_ids) and isinstance(input.data, torch.cuda.FloatTensor):
+            out = nn.parallel.data_parallel(self.model, image, self.gpu_ids)
+            feat_word = torch.cat((out, word), 1)
+            out = nn.parallel.data_parallel(self.word_model, feat_word, self.gpu_ids)
+            out = nn.parallel.data_parallel(self.out_model, out, self.gpu_ids)
+            return out
+        else:
+            out = self.model(image)
+            feat_word = torch.cat((out, word), 1)
+            out = self.word_model(feat_word)
+            out = self.out_model(out)
+            return out
 
 class PixelDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):
