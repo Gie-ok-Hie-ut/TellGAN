@@ -70,8 +70,8 @@ if __name__ == '__main__':
             t = (time.time() - iter_start_time) / opt.batchSize
             visualizer.print_current_errors(vid_idx, frame_idx, errors, t, t_data)
 
-            #if opt.display_id > 0:
-            #    visualizer.plot_current_errors(vid_idx, float(frame_idx) / len(video), opt, errors)
+            if opt.display_id > 0:
+                visualizer.plot_current_errors(vid_idx, float(frame_idx) / len(video), opt, errors)
 
         writer.close()
         visuals = model.get_current_visuals()
