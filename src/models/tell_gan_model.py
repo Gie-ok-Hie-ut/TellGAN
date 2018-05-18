@@ -225,7 +225,7 @@ class TellGANModel(BaseModel):
         # Combined loss
         loss_D = (loss_D_real + loss_D_fake) * 0.5
         # backward
-        loss_D.backward()
+        loss_D.backward(retain_graph=True)
         return loss_D
 
 
