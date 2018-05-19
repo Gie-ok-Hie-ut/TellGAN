@@ -49,9 +49,9 @@ class TellGANModel(BaseModel):
                                           use_sigmoid, opt.init_type, self.gpu_ids)
 
             # 3 + 1 = 4 channels on input
-            dspeak_input_nc = 3
-            dspeak_nlayers = 7
-            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, 'speak', dspeak_nlayers, opt.norm,
+            dspeak_input_nc = 4
+            dspeak_nlayers = 3#7
+            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, opt.which_model_netD, dspeak_nlayers, opt.norm,
                                                 use_sigmoid, opt.init_type, self.gpu_ids)
 
         if not self.isTrain or opt.continue_train:
@@ -226,7 +226,7 @@ class TellGANModel(BaseModel):
         # Combined loss
         loss_D = (loss_D_real + loss_D_fake) * 0.5
         # backward
-        loss_D.backward(retain_graph=True)
+        loss_D.backward()#retain_graph=True)
         return loss_D
 
 
@@ -235,9 +235,10 @@ class TellGANModel(BaseModel):
         self.loss_D = loss_D.data[0]
 
     def backward_D_speak(self):
-        real = torch.cat((self.img_cur_enc, self.img_cur_enc, self.word_cur_enc), 1)
+        real = torch.cat((self.img_cur.unsqueeze(0), self.ExpandTensor(self.word_cur, self.img_cur.size(1), self.img_cur.size(2))),1)
         # self.fake_dspeak_enc defined in backward_G and should be called before
-        fake = self.fake_dspeak_enc
+        #fake = (self.img_predict, self.word_cur)
+        fake = torch.cat((self.img_predict,self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
         loss_D_speak = self.backward_D_basic(self.netD_speak, real, fake)
         self.loss_D_speak = loss_D_speak.data[0]
 
@@ -302,9 +303,11 @@ class TellGANModel(BaseModel):
         weight_idt = 100
         weight_G = 1
 
-        self.fake_dspeak_enc = torch.cat((self.convlstm_output.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
-        self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
+        #self.loss_G_speak = self.criterionGAN(self.netD_speak((self.img_predict, self.word_cur)), True) * weight_G
+        fake = torch.cat(
+            (self.img_predict, self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
+        self.loss_G_speak = self.criterionGAN(self.netD_speak(fake), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_idt
         #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
