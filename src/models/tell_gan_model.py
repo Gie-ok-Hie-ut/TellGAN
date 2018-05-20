@@ -48,10 +48,10 @@ class TellGANModel(BaseModel):
             self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.which_model_netD, opt.n_layers_D, opt.norm,
                                           use_sigmoid, opt.init_type, self.gpu_ids)
 
-            # 4 + 4 = 8 channels on input (4 = 3 color + 1 word)
-            dspeak_input_nc = 8
+            # 3 color + 1 word = 4
+            dspeak_input_nc = 4
             dspeak_nlayers = 3#7
-            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, "3dnet", dspeak_nlayers, opt.norm,
+            self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, opt.which_model_netD, dspeak_nlayers, opt.norm,
                                                 use_sigmoid, opt.init_type, self.gpu_ids)
 
         if not self.isTrain or opt.continue_train:
@@ -235,16 +235,16 @@ class TellGANModel(BaseModel):
         self.loss_D = loss_D.data[0]
 
     def backward_D_speak(self):
-        real_prev = torch.cat((self.prev_img, self.ExpandTensor(self.prev_word, self.prev_img.size(2), self.prev_img.size(3))),1)
-        real_cur = torch.cat(
-            (self.img_cur.unsqueeze(0), self.ExpandTensor(self.word_cur, self.img_cur.size(1), self.img_cur.size(2))), 1)
-        real_d_input = torch.cat((real_prev, real_cur), 1)
+        real_change = self.img_cur.unsqueeze(0) - self.prev_img
+        real = torch.cat((real_change, self.ExpandTensor(self.word_cur, real_change.size(2), real_change.size(3))),1)
 
         # self.fake_dspeak_enc defined in backward_G and should be called before
         #fake = (self.img_predict, self.word_cur)
         #fake = torch.cat((self.img_predict,self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
-
-        loss_D_speak = self.backward_D_basic(self.netD_speak, real_d_input, self.fake_d_input)
+        fake_change = self.img_predict - self.prev_pred_img
+        fake = torch.cat(
+            (fake_change, self.ExpandTensor(self.word_cur, fake_change.size(2), fake_change.size(3))), 1)
+        loss_D_speak = self.backward_D_basic(self.netD_speak, real, fake)
         self.loss_D_speak = loss_D_speak.data[0]
 
     def backward_G_init(self):
@@ -311,13 +311,10 @@ class TellGANModel(BaseModel):
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         #self.loss_G_speak = self.criterionGAN(self.netD_speak((self.img_predict, self.word_cur)), True) * weight_G
 
-        fake_prev = torch.cat(
-            (self.prev_pred_img, self.ExpandTensor(self.prev_word, self.prev_pred_img.size(2), self.prev_pred_img.size(3))), 1)
-        fake_cur = torch.cat(
-            (self.img_predict, self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
-
-        self.fake_d_input = torch.cat((fake_prev, fake_cur), 1)
-        self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_d_input), True) * weight_G
+        fake_change = self.img_predict - self.prev_pred_img
+        fake = torch.cat(
+            (fake_change, self.ExpandTensor(self.word_cur, fake_change.size(2), fake_change.size(3))), 1)
+        self.loss_G_speak = self.criterionGAN(self.netD_speak(fake), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_idt
         #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
