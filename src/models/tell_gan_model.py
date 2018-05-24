@@ -149,13 +149,13 @@ class TellGANModel(BaseModel):
             self.img_cur_enc = self.netImgEncoder(self.img_predict.unsqueeze(0))
             self.word_cur_enc = self.Word2Tensor(self.word_cur, self.feature_size, self.feature_size)
 
-            self.img_enc_stack = torch.stack((self.img_enc_stack, self.img_cur_enc), 0)
-            self.word_enc_stack = torch.stack((self.word_enc_stack, self.word_cur_enc), 0)
+            self.img_enc_stack = torch.cat((self.img_enc_stack, self.img_cur_enc), 0)
+            self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
 
-        self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)
-        self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+            self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)
+            self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
-        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
+            self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
 
         self.img_init_save = self.img_init.data
         self.img_cur_save = img_input.data
@@ -289,7 +289,8 @@ class TellGANModel(BaseModel):
         img_cur = util.tensor2im(self.img_cur_save.unsqueeze(0))
         img_predict = util.tensor2im(self.img_predict_save)
 
-        ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
+        #ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
+        ret_visuals = OrderedDict([('img_predict', img_predict)])
         return ret_visuals
 
 
