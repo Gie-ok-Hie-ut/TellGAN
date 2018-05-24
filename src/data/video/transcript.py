@@ -47,6 +47,12 @@ class Transcript(object):
             if frame_num >= align.start and frame_num < align.end:
                 return align.word
 
+        # Transcritps have startFrame and EndFrame Number,
+        # We get words from start <= frame < end
+        # FIX: last frame needs a transcript, give last word in aligns
+        if frame_num == self.last_frame:
+            return self.aligns[-1].word
+
         return None
 
     '''

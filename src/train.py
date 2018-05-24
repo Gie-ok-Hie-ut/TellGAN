@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
                 (img, trans) = frame
                 if img.size(1) is not face_size or img.size(2) is not face_size or trans is None:
-                    print "[Incomplete Frame came..]"
+                    print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, img.size(), trans))
                     init_tensor=True
                     continue
 

@@ -70,14 +70,6 @@ class GRID(data.Dataset):
         print("Map of Users(%s)" % len(self.id_to_user))
 
         self.ids = list(self.id_to_user.keys())
-        # anno_path = os.path.join(self.root, self.anno_dir)
-        # for fname in listdir(anno_path):
-        #     if fname.endswith('.' + self.ANNO_EXT):
-        #         id = os.path.splitext(fname)[0]
-        #         # check if we have a video associated with annotation
-        #         if id in id_to_user:
-        #             self.ids.append((id, id_to_user[id]))
-
 
 
     def __getitem__(self, index):
@@ -95,7 +87,10 @@ class GRID(data.Dataset):
         # each frame is (288, 360, 3) by default
         video = Video(vid_path, anno_path, self.transform, self.target_transform)
 
-        #TODO: If we want Transforms for video frames
+        #TODO: If we want Transforms for videos
+        # Ideas are to mirror frames and randomly select video for data augmentation
+        # Randomly selecting video would be easy, just randomize the ids list
+        # For mirroring, we can
         # Set transforms in video and have to it in getItem!!
         '''
         if self.transform is not None:
