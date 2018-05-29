@@ -34,7 +34,7 @@ class TellGANModel(BaseModel):
                                                         opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         # Load Dictionary
-        self.dic_size = 300
+        self.dic_size = 20
         try:
             self.dictionary = np.load('grid_embedding.npy').item()
             print "[Dictionary] Loading Existing Embedding Dictionary"
@@ -322,12 +322,11 @@ class TellGANModel(BaseModel):
     def optimize_parameters(self, init_tensor = True):
         self.forward()
 
+        print("[First Frame Initialization] {0} [Word] {1}".format(init_tensor, self.input_transcription))
         if init_tensor == True:
-            print "[First Frame Initialization] True"
             self.backward_G_init()
         else:
             # G
-            print "[First Frame Initialization] False"
             self.optimizer_G.zero_grad()
             self.backward_G()
             self.optimizer_G.step()
@@ -378,3 +377,9 @@ class TellGANModel(BaseModel):
 
     def mse_loss(self, input, target):
         return torch.sum((input - target)**2) / input.data.nelement()
+
+    def get_dic(self):
+        return self.dictionary
+
+    def get_dic_size(self):
+        return self.dic_size

@@ -6,6 +6,8 @@ from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace
 from data.grid_loader import GRID
 from torchvision import transforms
+import numpy as np
+
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()
@@ -28,6 +30,9 @@ if __name__ == '__main__':
     visualizer = Visualizer(opt)
     total_steps = 0
 
+
+
+    # Train
     for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         epoch_start_time = time.time()
         iter_data_time = time.time()
@@ -47,14 +52,28 @@ if __name__ == '__main__':
             for frame_idx, frame in enumerate(video):
 
                 (img, trans) = frame
+
+                # Exception - frame size
                 if img.size(1) is not face_size or img.size(2) is not face_size or trans is None:
-                    print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, img.size(), trans))
+                    print("[Incomplete Frame] {0} Size: {1} Word: {2}".format(frame_idx, img.size(), trans))
                     init_tensor=True
                     continue
 
-                if frame_idx%40 == 0:
+                # Exception - word
+                if trans == "sil" or trans == "bin":
+                	continue
+
+                # Exception - dic size                
+                if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(trans, -1) == -1:
+                	print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, trans))
+                	init_tensor=True
+                	continue
+        		
+                # Total Frame
+                if frame_idx%20 == 0:
                     init_tensor=True
 
+                # Train
                 model.set_input(frame)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
