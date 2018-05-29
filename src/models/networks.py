@@ -517,11 +517,127 @@ class ResnetBlock(nn.Module):
         out = x + self.conv_block(x)
         return out
 
+# Based on this code 
+# https://github.com/milesial/Pytorch-UNet/blob/master/unet
+
+class WordUnet(nn.Module):
+    def __init__(self,n_channels,n_classes):
+        super(WordUnet,self).__init__()
+        
+        self.same1 = conv_same(n_channels, 16) #3/256/256 -> 16/256/256
+        self.down1 = conv_down(16, 32)
+        self.down2 = conv_down(32, 64)
+        self.down3 = conv_down(64, 128)
+        self.concat1 = conv_concat(128,32)
+        self.up1 = conv_up(160, 64, 32)
+        self.up2 = conv_up(160, 32, 32)
+        self.up3 = conv_up(96, 16, 16)
+        self.concat2 = conv_concat(48,16)
+        self.same2 = conv_same(64, 16)
+        self.same3 = conv_same(16, 3)
+
+
+    def forward(self, input, landmark):
+        x1 = self.same1(input) # 256/256/3 -> 256/256/16
+        x2 = self.down1(x1) # 256/256/16 -> 128/128/32
+        x3 = self.down2(x2) # 128/128/32 -> 64/64/64
+        x4 = self.down3(x3) # 64/64/64 -> 32/32/128
+        x5 = self.concat1(x4,landmark) # 32/32/128 -> 32/32/160
+        x6 = self.up1(x5,x4,landmark) # 32/32/160 -> 64/64/64
+        x7 = self.up2(x6,x3,landmark) # 128/128/
+        x8 = self.up3(x7,x2,landmark)
+        x9 = self.concat2(x8,x1)
+        x10 = self.same2(x9)
+        x11 = self.same3(x10)
+
+        return x11
+
+
+class conv_double(nn.Module): # same size W/H
+    def __init__(self, in_ch, out_ch):
+        super(conv_double, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, 3, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, 3, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+
+class conv_same(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super(conv_same, self).__init__()
+        self.conv = conv_double(in_ch, out_ch)
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+
+class conv_down(nn.Module): # size be half
+    def __init__(self, in_ch, out_ch):
+        super(conv_down, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3,stride=2, padding=1, bias=use_bias),
+            norm_layer(out_ch),
+            nn.ReLU(True),
+            double_conv(out_ch, out_ch)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+
+class conv_up(nn.Module):
+    def __init__(self, in_ch, out_ch, aug_ch):
+        super(conv_up, self).__init__()
+        self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+        self.conv = double_conv(in_ch, out_ch)
+        self.aug = nn.Sequential(nn.Conv2d(in_ch, aug_ch, kernel_size=1,stride=1, padding=0))
+
+    def forward(self, x1, x2, x3):
+        x1 = self.up(x1)
+        x3 = self.aug(x3)
+        x = torch.cat([x1, x2, x3], dim=1)
+        x = self.conv(x)
+        return x
+
+
+class UNet(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(UNet, self).__init__()
+        self.inc = inconv(n_channels, 64)
+        self.down1 = down(64, 128)
+        self.down2 = down(128, 256)
+        self.down3 = down(256, 512)
+        self.down4 = down(512, 512)
+        self.up1 = up(1024, 256)
+        self.up2 = up(512, 128)
+        self.up3 = up(256, 64)
+        self.up4 = up(128, 64)
+        self.outc = outconv(64, n_classes)
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        x = self.outc(x)
+        return x
 
 # Defines the Unet generator.
 # |num_downs|: number of downsamplings in UNet. For example,
 # if |num_downs| == 7, image of size 128x128 will become of size 1x1
-# at the bottleneck
+# at the bottleneck    
 class UnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64,
                  norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[]):
