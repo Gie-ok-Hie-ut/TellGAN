@@ -538,11 +538,14 @@ class WordUnet(nn.Module):
 
 
     def forward(self, input, landmark):
+        # Encoder
         x1 = self.same1(input) # 256/256/3 -> 256/256/16
         x2 = self.down1(x1) # 256/256/16 -> 128/128/32
         x3 = self.down2(x2) # 128/128/32 -> 64/64/64
         x4 = self.down3(x3) # 64/64/64 -> 32/32/128
         x5 = self.concat1(x4,landmark) # 32/32/128 -> 32/32/160
+
+        # Decoder
         x6 = self.up1(x5,x4,landmark) # 32/32/160 -> 64/64/64
         x7 = self.up2(x6,x3,landmark) # 128/128/
         x8 = self.up3(x7,x2,landmark)
@@ -597,12 +600,14 @@ class conv_up(nn.Module):
         super(conv_up, self).__init__()
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
         self.conv = double_conv(in_ch, out_ch)
+        #self.conv = double_conv(in_ch, out_ch)
         self.aug = nn.Sequential(nn.Conv2d(in_ch, aug_ch, kernel_size=1,stride=1, padding=0))
 
     def forward(self, x1, x2, x3):
         x1 = self.up(x1)
         x3 = self.aug(x3)
         x = torch.cat([x1, x2, x3], dim=1)
+        
         x = self.conv(x)
         return x
 
