@@ -668,46 +668,81 @@ class NLayerDiscriminator3D(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        kw = 4
+        kw3d = (2, 4, 4)
+        kw=4
+        stride3d = (2, 1, 1)
+        padw3d = (0, 2, 2)
         padw = 1
-        sequence = [
-            nn.Conv3d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
+        input_sequence = [
+            nn.Conv3d(input_nc, ndf, kernel_size=kw3d, stride=stride3d, padding=padw3d),
             nn.LeakyReLU(0.2, True)
         ]
-
+        sequence = []
         nf_mult = 1
         nf_mult_prev = 1
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
             nf_mult = min(2**n, 8)
+            stride = 1 if n%2 == 0 else 2
+            padw = 2 if n%2 == 0 else 1
+
             sequence += [
-                nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult,
-                          kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=stride, padding=padw, bias=use_bias),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
             ]
 
         nf_mult_prev = nf_mult
         nf_mult = min(2**n_layers, 8)
-        sequence += [
-            nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult,
-                      kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+        # Add 2 Word label Dimensions
+        word_sequence = [
+            nn.Conv2d(ndf * nf_mult_prev+2, ndf * nf_mult,
+                      kernel_size=kw, stride=1, padding=2, bias=use_bias),
             norm_layer(ndf * nf_mult),
             nn.LeakyReLU(0.2, True)
         ]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
+        word_sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=3)]
 
         if use_sigmoid:
-            sequence += [nn.Sigmoid()]
+            word_sequence += [nn.Sigmoid()]
 
+        self.input_layer = nn.Sequential(*input_sequence)
         self.model = nn.Sequential(*sequence)
+        self.word_model = nn.Sequential(*word_sequence)
 
     def forward(self, input):
-        if len(self.gpu_ids) and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+        img_seq, word_seq = input
+
+        if len(self.gpu_ids) and isinstance(img_seq.data, torch.cuda.FloatTensor):
+            in_latency = nn.parallel.data_parallel(self.input_layer, img_seq, self.gpu_ids)
+            # 3D convlove reduced depth from 2 to 1, remove single dim [1,64,1,64,64] -> [1,64,64,64] for conv2d
+            in_latency = in_latency.squeeze(2)
+
+            temporal_latency = nn.parallel.data_parallel(self.model, in_latency, self.gpu_ids)
+            word_label = self.expandTensor(word_seq, temporal_latency.size(2), temporal_latency.size(3))
+            temporal_word_label = torch.cat((temporal_latency, word_label), 1)
+            out = nn.parallel.data_parallel(self.word_model, temporal_word_label, self.gpu_ids)
+            return out
         else:
-            return self.model(input)
+            in_latency = self.input_layer(img_seq)
+            temporal_latency = self.model(in_latency)
+            word_label = self.expandTensor(word_seq, temporal_latency.size(2), temporal_latency.size(3))
+            temporal_word_label = torch.cat((temporal_latency, word_label), 1)
+            out = self.word_model(temporal_word_label)
+            return out
+
+    def expandTensor(self, tensor, width, height):
+        tensor_cur = tensor
+
+        np2tensor = tensor_cur.repeat(1,width,height)
+
+        # Add One dim
+        np2tensor_sq1 = np2tensor.unsqueeze(0)
+        #np2tensor_sq2 = np2tensor_sq1.unsqueeze(0)
+
+        return np2tensor_sq1 # 1*2*16*16 (b*c*w*h)
 
 # Defines the Speak discriminator with the specified arguments.
 class SpeakDiscriminator(nn.Module):

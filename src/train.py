@@ -52,7 +52,8 @@ if __name__ == '__main__':
                     init_tensor=True
                     continue
 
-                if frame_idx%40 == 0:
+                #if frame_idx%40 == 0:
+                if frame_idx%24 == 0:
                     init_tensor=True
 
                 model.set_input(frame)

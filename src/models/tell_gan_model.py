@@ -49,7 +49,7 @@ class TellGANModel(BaseModel):
                                           use_sigmoid, opt.init_type, self.gpu_ids)
 
             # 4 + 4 = 8 channels on input (4 = 3 color + 1 word)
-            dspeak_input_nc = 8
+            dspeak_input_nc = 3
             dspeak_nlayers = 3#7
             self.netD_speak = networks.define_D(dspeak_input_nc, opt.ndf, "3dnet", dspeak_nlayers, opt.norm,
                                                 use_sigmoid, opt.init_type, self.gpu_ids)
@@ -221,7 +221,7 @@ class TellGANModel(BaseModel):
         loss_D_real = self.criterionGAN(pred_real, True)
 
         # Fake
-        pred_fake = netD(fake.detach())
+        pred_fake = netD(fake)
         loss_D_fake = self.criterionGAN(pred_fake, False)
         # Combined loss
         loss_D = (loss_D_real + loss_D_fake) * 0.5
@@ -231,20 +231,22 @@ class TellGANModel(BaseModel):
 
 
     def backward_D(self):
-        loss_D = self.backward_D_basic(self.netD, self.img_cur.unsqueeze(0), self.img_predict)
+        loss_D = self.backward_D_basic(self.netD, self.img_cur.unsqueeze(0), self.img_predict.unsqueeze(0).detach())
         self.loss_D = loss_D.data[0]
 
     def backward_D_speak(self):
-        real_prev = torch.cat((self.prev_img, self.ExpandTensor(self.prev_word, self.prev_img.size(2), self.prev_img.size(3))),1)
-        real_cur = torch.cat(
-            (self.img_cur.unsqueeze(0), self.ExpandTensor(self.word_cur, self.img_cur.size(1), self.img_cur.size(2))), 1)
-        real_d_input = torch.cat((real_prev, real_cur), 1)
+
+        real_vid_seq = torch.cat((self.prev_img.unsqueeze(2), self.img_cur.unsqueeze(0).unsqueeze(2)), 2)
+        word_seq = torch.cat((self.prev_word, self.word_cur), 0).unsqueeze(-1)
+        real_d_input = (real_vid_seq, word_seq)
 
         # self.fake_dspeak_enc defined in backward_G and should be called before
         #fake = (self.img_predict, self.word_cur)
         #fake = torch.cat((self.img_predict,self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
 
-        loss_D_speak = self.backward_D_basic(self.netD_speak, real_d_input, self.fake_d_input)
+        (img, word) = self.fake_d_input
+        fake = (img.detach(), word.detach())
+        loss_D_speak = self.backward_D_basic(self.netD_speak, real_d_input, fake)
         self.loss_D_speak = loss_D_speak.data[0]
 
     def backward_G_init(self):
@@ -266,6 +268,7 @@ class TellGANModel(BaseModel):
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_init.data
         self.img_predict_save = self.img_init.data
+
         self.loss_G = 0
         self.loss_G_speak = 0
         self.loss_idt = 0
@@ -302,24 +305,23 @@ class TellGANModel(BaseModel):
         self.word_enc_stack
 
         # Final
-        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
+        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0)).squeeze(0)
 
         # Loss Weight
         weight_idt = 100
         weight_G = 1
 
-        self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
+        self.loss_G = self.criterionGAN(self.netD(self.img_predict.unsqueeze(0)), True) * weight_G
         #self.loss_G_speak = self.criterionGAN(self.netD_speak((self.img_predict, self.word_cur)), True) * weight_G
 
-        fake_prev = torch.cat(
-            (self.prev_pred_img, self.ExpandTensor(self.prev_word, self.prev_pred_img.size(2), self.prev_pred_img.size(3))), 1)
-        fake_cur = torch.cat(
-            (self.img_predict, self.ExpandTensor(self.word_cur, self.img_predict.size(2), self.img_predict.size(3))), 1)
+        #[batch, chan, seq, h, w]
+        fake_vid_seq = torch.cat((self.prev_pred_img.unsqueeze(2), self.img_predict.unsqueeze(0).unsqueeze(2)), 2)
+        word_seq = torch.cat((self.prev_word, self.word_cur), 0).unsqueeze(-1)
 
-        self.fake_d_input = torch.cat((fake_prev, fake_cur), 1)
+        self.fake_d_input = (fake_vid_seq, word_seq)
         self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_d_input), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
-        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_idt
+        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur) * weight_idt
         #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
 
         loss_total = self.loss_G + self.loss_G_speak + self.loss_idt
@@ -329,6 +331,7 @@ class TellGANModel(BaseModel):
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_cur.data
         self.img_predict_save = self.img_predict.data
+        self.img_prev_save = self.prev_img.data
         self.loss_G = self.loss_G.data[0]
         self.loss_G_speak = self.loss_G_speak.data[0]
         self.loss_idt = self.loss_idt.data[0]
@@ -359,7 +362,7 @@ class TellGANModel(BaseModel):
             self.backward_D_speak()
             self.optimizer_D_speak.step()
 
-            self.prev_pred_img = self.img_predict
+            self.prev_pred_img = self.img_predict.unsqueeze(0)
 
         self.prev_img = self.img_input.unsqueeze(0)
         self.prev_word = self.word_input
@@ -379,11 +382,14 @@ class TellGANModel(BaseModel):
 
 
     def get_current_visuals(self):
+        if not self.isTrain:
+            return OrderedDict([])
         img_init = util.tensor2im(self.img_init_save.unsqueeze(0))
+        img_prev = util.tensor2im(self.img_prev_save)
         img_cur = util.tensor2im(self.img_cur_save.unsqueeze(0))
-        img_predict = util.tensor2im(self.img_predict_save)
+        img_predict = util.tensor2im(self.img_predict_save.unsqueeze(0))
 
-        ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
+        ret_visuals = OrderedDict([('img_init', img_init),('img_prev', img_prev), ('img_cur', img_cur), ('img_predict', img_predict)])
         return ret_visuals
 
 
