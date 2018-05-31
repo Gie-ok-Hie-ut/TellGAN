@@ -25,13 +25,12 @@ class TellGANModel(BaseModel):
         self.lstm_out_nc = [256]
         self.lstm_nlayers = 1
         self.lstm_kernel_size = (3, 3)
-        self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',
-                                                        opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers,
-                                                   self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'WordUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        #self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers,self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
         # self.netWordEmbed = networks.define_WordEmbed(64,64,1)
-        self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',
-                                                        opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        #self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         # Load Dictionary
         self.dic_size = 20
@@ -55,10 +54,11 @@ class TellGANModel(BaseModel):
 
         if not self.isTrain or opt.continue_train:
             which_epoch = opt.which_epoch
+            self.load_network(self.netG, 'WordUnet', which_epoch)
             self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
             self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
             # self.load_network(self.netWordEmbed, 'WordEmbed', which_epoch)
-            self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
+            #self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
 
             if self.isTrain:
                 self.load_network(self.netD, 'Discriminator', which_epoch)
@@ -71,8 +71,8 @@ class TellGANModel(BaseModel):
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(
-                itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(),
-                                self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+                itertools.chain(self.netG.parameters(), self.netImgEncoder.parameters(), self.netImgLSTM.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+                #itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(),self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D_speak = torch.optim.Adam(self.netD_speak.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers = []
@@ -87,29 +87,33 @@ class TellGANModel(BaseModel):
              self.criterionTest = torch.nn.MSELoss()
 
         print('---------- Networks initialized -------------')
+        networks.print_network(self.netG)
         networks.print_network(self.netImgEncoder)
         networks.print_network(self.netImgLSTM)
         # networks.print_network(self.netWordEmbed)
-        networks.print_network(self.netImgDecoder)
+        #networks.print_network(self.netImgDecoder)
         if self.isTrain:
             networks.print_network(self.netD)
             networks.print_network(self.netD_speak)
         print('-----------------------------------------------')
 
     def set_input(self, input):
-        (input_frame, input_transcription) = input
+        (input_frame, input_transcription, input_landmark) = input
 
         if len(self.gpu_ids) > 0:
             input_frame = input_frame.cuda(self.gpu_ids[0], async=True)
 
         self.input_frame = input_frame
         self.input_transcription = input_transcription
+        self.input_landmark = input_landmark
 
     def forward(self):
         self.img_input = Variable(self.input_frame)
 
         self.word_tensor = self.Word2Tensor(self.input_transcription)
         self.word_input = Variable(self.word_tensor)
+
+        self.lnmk_input = Variable(self.input_landmark)
 
     def Word2Tensor(self, word):
         word_cur = word
@@ -243,8 +247,10 @@ class TellGANModel(BaseModel):
     def backward_G_init(self):
         self.img_init = self.img_input
         self.word_init = self.word_input
+        self.lnmk_init = self.lnmk_input
 
-        self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
+        #self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
+
         self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
         self.word_enc_flag = True
@@ -265,59 +271,67 @@ class TellGANModel(BaseModel):
 
 
     def backward_G(self):
-
         # Setting
         self.img_cur = self.img_input
         self.word_cur = self.word_input
+        self.lnmk_cur = self.lnmk_input
 
-        self.img_cur_enc = self.netImgEncoder(self.img_cur.unsqueeze(0))     # Temporalily Added to make a form (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
+        self.lnmk_cur_enc = self.netImgEncoder(self.lnmk_cur.unsqueeze(0))
         self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
-        #self.word_cur_enc = self.word_cur
-
+        
         #Input 
         # as (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
         #Output
         # img_cur_enc => 1 * 256 * 38 * 38 (b * c * w * h)
 
         # Stack Before
-        self.img_enc_stack
+        self.lnmk_enc_stack
         if self.word_enc_flag == True:
             self.word_enc_stack = self.word_cur_enc
             self.word_enc_flag = False
         else:
             self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
 
-        self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
+        self.convlstm_input = torch.cat((self.lnmk_enc_stack, self.word_enc_stack), 1)
         self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+        self.lnmk_predict = self.convlstm_output
 
         # Stack After
-        self.img_enc_stack = torch.cat((self.img_enc_stack, self.img_cur_enc), 0)
+        self.lnmk_enc_stack = torch.cat((self.lnmk_enc_stack, self.lnmk_cur_enc), 0)
         self.word_enc_stack
 
         # Final
-        self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
+        self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
 
         # Loss Weight
-        weight_idt = 100
+        weight_lnmk_idt = 1
+        weight_img_idt = 1
         weight_G = 1
 
+
+        # Loss Calculate
         self.fake_dspeak_enc = torch.cat((self.convlstm_output.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
+
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
-        self.loss_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_idt
-        #self.loss_idt = torch.mean(torch.abs(self.img_cur - self.img_predict)) * weight_idt # Not Sure About this...
+        self.loss_lnmk_idt = self.criterionIdt(self.lnmk_predict, self.lnmk_cur.unsqueeze(0)) * weight_lnmk_idt
+        self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
 
-        loss_total = self.loss_G + self.loss_G_speak + self.loss_idt
+        loss_total = self.loss_G + self.loss_G_speak + self.loss_img_idt + self.loss_lnmk_idt
         loss_total.backward(retain_graph=True)
 
         # Save
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_cur.data
         self.img_predict_save = self.img_predict.data
+        self.lnmk_cur_save = self.lnmk_cur.data
+        self.lnmk_predict_save = self.lnmk_predict.data
+
         self.loss_G = self.loss_G.data[0]
         self.loss_G_speak = self.loss_G_speak.data[0]
-        self.loss_idt = self.loss_idt.data[0]
+        #self.loss_idt = self.loss_idt.data[0]
+        self.loss_img_idt = self.loss
 
     def optimize_parameters(self, init_tensor = True):
         self.forward()
@@ -360,16 +374,19 @@ class TellGANModel(BaseModel):
         img_init = util.tensor2im(self.img_init_save.unsqueeze(0))
         img_cur = util.tensor2im(self.img_cur_save.unsqueeze(0))
         img_predict = util.tensor2im(self.img_predict_save)
+        lnmk_cur = util.tensor2im(self.lnmk_cur_save)
+        lnmk_predict = util.tensor2im(self.lnmk_predict_save)
 
-        ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict)])
+        ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict), ('lnmk_cur', lnmk_cur), ('lnmk_predict', lnmk_predict)])
         return ret_visuals
 
 
     def save(self, label):
+        self.save_network(self.netG, 'WordUnet', label, self.gpu_ids)
         self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
         self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)
         # self.save_network(self.netWordEmbed, 'WordEmbed', label, self.gpu_ids)
-        self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
+        #self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
         self.save_network(self.netD, 'Discriminator', label, self.gpu_ids)
         self.save_network(self.netD_speak, 'DiscriminatorSpeak', label, self.gpu_ids)
 
