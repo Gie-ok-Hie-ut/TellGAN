@@ -4,7 +4,8 @@ import time
 import numpy as np
 import cv2
 import dlib
-
+import argparse
+import os
 
 import itertools
 from options.train_options import TrainOptions
@@ -22,6 +23,22 @@ from torch.autograd import Variable
 from PIL import Image
 import skvideo.io
 
+
+def get_arguments():
+    """Parse all the arguments provided from the CLI.
+
+    Returns:
+      A list of parsed arguments.
+    """
+    parser = argparse.ArgumentParser(description="Denoise Autoencoder.")
+    parser.add_argument("--train", action="store_true", dest="isTrain", default=True,
+                        help="Train model, save checkpoints (Default)")
+    parser.add_argument("--test", action="store_false", dest="isTrain", default=True,
+                        help="Test model, load checkpoints")
+    return parser.parse_args()
+
+args = get_arguments()
+
 class OpticalFlow(object):
     def __init__(self, feature_model=None):
         self.feature_model = feature_model
@@ -38,15 +55,20 @@ class OpticalFlow(object):
         gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
         #mat1 = self.pilToMat(pil1)
         gray1 = cv2.cvtColor(pil1, cv2.COLOR_BGR2GRAY)
+        features1 = None
 
         if features0 is None:
             features0 = self.getFeaturePoints(gray0)
 
-        features1, features0 = self.getFlow(gray0, gray1, features0)
+        # May fail to get features, return None and blank mask
+        if features0 is not None:
+            features1, features0 = self.getFlow(gray0, gray1, features0)
 
         mask = self.create_mask(gray1, features1)
 
-        return features1.reshape(-1,1,2), self.matToPil(mask)
+        features1 = features1.reshape(-1,1,2) if features1 is not None else None
+
+        return features1, self.matToPil(mask)
 
     def getInit(self, pil0):
         #gray0 = cv2.cvtColor(self.pilToMat(pil0), cv2.COLOR_BGR2GRAY)
@@ -70,6 +92,8 @@ class OpticalFlow(object):
 
         features = np.copy(features).astype(np.int)
         mask = np.zeros_like(img)
+        if features is None:
+            return mask
         mask[features[:,:,1], features[:,:,0]] = 255
 
         return mask
@@ -77,6 +101,7 @@ class OpticalFlow(object):
 
     def getFeaturePoints(self, img_grey):
         faces = self.face_detector(img_grey, 1)
+        features = None
 
         for k, rect in enumerate(faces):
             # print("k: ", k)
@@ -86,6 +111,9 @@ class OpticalFlow(object):
             break
 
         feat_points = np.asfarray([])
+        if features is None:
+            return None
+
         for i, part in enumerate(features.parts()):
             fpoint = np.asfarray([part.x, part.y])
             # filter if index values larger than image
@@ -117,12 +145,72 @@ def create_video(vid_path, vid_idx, save_freq):
     if vid_idx % save_freq != 0:
         return None
 
-    return skvideo.io.FFmpegWriter(vid_path)
+    return 1#skvideo.io.FFmpegWriter(vid_path)
+
+# helper saving function that can be used by subclasses
+def save_network(network, network_label, epoch_label):
+    save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+    save_path = os.path.join(save_dir, save_filename)
+    torch.save(network.cpu().state_dict(), save_path)
+    if torch.cuda.is_available():
+        network.cuda()
+
+# helper loading function that can be used by subclasses
+def load_network(network, network_label, epoch_label):
+    save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+    save_path = os.path.join(save_dir, save_filename)
+    if os.path.isfile(save_path):
+        print("Loading model: {}".format(save_path))
+        network.load_state_dict(torch.load(save_path))
+    else:
+        print("Cannot Find Model: {}".format(save_path))
+        exit(1)
+
+# helper saving function that can be used by subclasses
+def save_network(network, network_label, epoch_label='latest', save_dir="./"):
+    save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+    save_path = os.path.join(save_dir, save_filename)
+    torch.save(network.cpu().state_dict(), save_path)
+    if torch.cuda.is_available():
+        network.cuda()
+
+# helper loading function that can be used by subclasses
+def load_network(network, network_label, epoch_label='latest', save_dir="./"):
+    save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+    save_path = os.path.join(save_dir, save_filename)
+    if os.path.isfile(save_path):
+        print("Loading model: {}".format(save_path))
+        network.load_state_dict(torch.load(save_path))
+    else:
+        print("Cannot Find Model: {}".format(save_path))
+        exit(1)
+
 
 if __name__ == '__main__':
+
+    args = get_arguments()
+
+    isTrain = args.isTrain
     dataroot = "/home/jake/classes/cs703/Project/data/grid/"
+    if isTrain:
+        print("Trainging...")
+    else:
+        print("Testing...")
+        dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
+
+    save_dir = "./optflow_chkpnts"
+
+    mode = "train" if isTrain else "test"
+    output_dir = './out_{0}'.format(mode)
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     face_size=(288, 360)
+    save_freq=20
 
     face_predictor_path = '/home/jake/classes/cs703/Project/dev/TellGAN/src/assests/predictors/shape_predictor_68_face_landmarks.dat'
 
@@ -140,6 +228,11 @@ if __name__ == '__main__':
     model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
                               num_layers=3,hidden_dim=[2,3,1],
                               kernel_size=(3,3), batch_first=True)
+
+    if isTrain is False:
+        which_epoch = 'latest'
+        load_network(model, 'OpticalFlowLSTM', which_epoch)
+
     model.cuda()
 
     opticalFlow = OpticalFlow(face_predictor_path)
@@ -148,16 +241,19 @@ if __name__ == '__main__':
 
     crit = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
     crit.cuda()
-    optimizer = optim.Adam(itertools.chain(model.parameters()))
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
+    if isTrain is True:
+        optimizer = optim.Adam(itertools.chain(model.parameters()))
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
     total_steps = 0
 
-    vid_path = "pred_mask_{}.mp4"
+    vid_path = "%s/pred_mask_{0}.mp4" % output_dir
 
     for epoch in range(0, 100):
 
-        scheduler.step()
+        if isTrain is True:
+            scheduler.step()
         epoch_start_time = time.time()
         iter_data_time = time.time()
         epoch_iter = 0
@@ -175,11 +271,13 @@ if __name__ == '__main__':
             prev_img_seq = None
             word_seq = None
             vid_loss = []
-            vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
-
+            #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
+            sample_frames = []
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
-                optimizer.zero_grad()
+                if isTrain is True:
+                    optimizer.zero_grad()
+
                 (img, trans) = frame
                 imgT = toTensor(img)
 
@@ -207,8 +305,8 @@ if __name__ == '__main__':
                 if (init_tensor == True):
                     prev_img_seq = maskT.unsqueeze(0)
                     init_tensor = False
-                    if vidWriter is not None:
-                        vidWriter.writeFrame(np.concatenate((mask, mask), axis=1))
+                    if vid_idx % save_freq == 0:
+                        sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
                     continue
 
                 if word_seq is not None:
@@ -221,28 +319,49 @@ if __name__ == '__main__':
 
                 pred_maskT = model(input.detach())
 
-                if vidWriter is not None:
+                if vid_idx % save_freq == 0:
                     pred_mask = (pred_maskT.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
                     pil_pred_mask = opticalFlow.matToPil(np.squeeze(pred_mask, axis=2))
-                    vidWriter.writeFrame(np.concatenate((mask, pil_pred_mask), axis=1))
+                    sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))
 
+                #mask.save("mask_{}.png".format(frame_idx))
                 prev_img_seq = torch.cat((prev_img_seq, maskT.unsqueeze(0)), 0)
 
                 loss = crit(pred_maskT, maskT.cuda())
 
                 vid_loss.append(loss.data.cpu().numpy())
 
-                loss.backward()
-                optimizer.step()
+                if isTrain is True:
+                    loss.backward()
+                    optimizer.step()
 
                 if frame_idx%100 == 0:
                     init_tensor=True
                     prev_img_seq=None
                     word_seq=None
 
-            if vidWriter is not None:
-                vidWriter.close()
+            if vid_idx % save_freq == 0:
+                outputdata = np.expand_dims(np.array(sample_frames), axis=3)
+                skvideo.io.vwrite(vid_path.format(vid_idx), outputdata)
+
+            if isTrain and vid_idx % 20 == 0:
+                save_network(model, 'OpticalFlowLSTM', epoch_label='latest', save_dir=save_dir)
+                save_network(model, 'OpticalFlowLSTM',
+                             epoch_label="ep{0}_{1}".format(epoch,vid_idx),
+                             save_dir=save_dir)
 
             avg_loss = sum(vid_loss) / len(vid_loss)
             print("ep: {0}, video: {1}, Loss: {2}".format(epoch, vid_idx, avg_loss))
             print("===========================")
+
+        if isTrain:
+            save_network(model, 'OpticalFlowLSTM',
+                         epoch_label="ep{0}".format(epoch),
+                         save_dir=save_dir)
+        else:
+            # If we are testing, no need to go through the dataset again for another epoch
+            break
+    if isTrain:
+        save_network(model, 'OpticalFlowLSTM',
+                     epoch_label="complete",
+                     save_dir=save_dir)
