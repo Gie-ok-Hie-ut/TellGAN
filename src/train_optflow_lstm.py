@@ -320,7 +320,7 @@ if __name__ == '__main__':
                 else:
                     prev_img_seq = torch.cat((prev_img_seq, pred_maskT.unsqueeze(0).cpu()), 0)
 
-                print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
+                #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
                 loss = crit(pred_maskT, maskT.cuda())
 
                 vid_loss.append(loss.data.cpu().numpy())
