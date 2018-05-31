@@ -179,15 +179,15 @@ def backwardG(fake, gt, word, optimizer_G, discriminator, crit_gan, critID, w_id
     optimizer_G.zero_grad()
     # GAN Loss
     #loss_G = crit_gan(discriminator(fake), True)
-    fakeG = torch.cat((fake, word), 0)
-    pred_fake = discriminator(fakeG.unsqueeze(0))
+    #fakeG = torch.cat((fake, word), 0)
+    pred_fake = discriminator(fake.unsqueeze(0))
     true = torch.ones(pred_fake.shape).cuda()
     loss_G = crit_gan(pred_fake, true)
 
     # ID Loss
     loss_ID = critID(fake, gt)
     loss_G_total = loss_G + loss_ID * w_id
-    loss_G_total.backward( retain_graph=True)
+    loss_G_total.backward(retain_graph=True)
     optimizer_G.step()
 
     return loss_G_total, loss_G, loss_ID
@@ -196,14 +196,14 @@ def backwardG(fake, gt, word, optimizer_G, discriminator, crit_gan, critID, w_id
 def backwardD(fake, gt, word, optimizer_D, discriminator, crit_gan):
     # Train Discriminator
     optimizer_D.zero_grad()
-    gtD = torch.cat((gt, word), 0)
-    pred_real = discriminator(gtD.unsqueeze(0))
+    #gtD = torch.cat((gt, word), 0)
+    pred_real = discriminator(gt.unsqueeze(0))
     true = torch.ones(pred_real.shape).cuda()
     loss_D_real = crit_gan(pred_real, true)
 
     # Fake
-    fakeD = torch.cat((fake, word), 0)
-    pred_fake = discriminator(fakeD.detach().unsqueeze(0))
+    #fakeD = torch.cat((fake, word), 0)
+    pred_fake = discriminator(fake.detach().unsqueeze(0))
     false = torch.ones(pred_fake.shape).cuda()
     loss_D_fake = crit_gan(pred_fake, false)
     # Combined loss
@@ -255,7 +255,7 @@ if __name__ == '__main__':
     model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
                               num_layers=3,hidden_dim=[3,3,1],
                               kernel_size=(3,3), batch_first=True)
-    discriminator = NLayerDiscriminator(input_nc=2)#, use_sigmoid=True)
+    discriminator = NLayerDiscriminator(input_nc=1)#, use_sigmoid=True)
 
     if isTrain is False:
         which_epoch = 'latest'
