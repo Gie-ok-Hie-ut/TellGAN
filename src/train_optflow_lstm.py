@@ -155,16 +155,6 @@ def save_network(network, network_label, epoch_label):
     if torch.cuda.is_available():
         network.cuda()
 
-# helper loading function that can be used by subclasses
-def load_network(network, network_label, epoch_label):
-    save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
-    save_path = os.path.join(save_dir, save_filename)
-    if os.path.isfile(save_path):
-        print("Loading model: {}".format(save_path))
-        network.load_state_dict(torch.load(save_path))
-    else:
-        print("Cannot Find Model: {}".format(save_path))
-        exit(1)
 
 # helper saving function that can be used by subclasses
 def save_network(network, network_label, epoch_label='latest', save_dir="./"):
@@ -196,7 +186,7 @@ if __name__ == '__main__':
         print("Trainging...")
     else:
         print("Testing...")
-        dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
+        #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
 
     save_dir = "./optflow_chkpnts"
 
@@ -226,12 +216,12 @@ if __name__ == '__main__':
     print('#training images = %d' % dataset_size)
 
     model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
-                              num_layers=3,hidden_dim=[2,3,1],
-                              kernel_size=(3,3), batch_first=True)
+                              num_layers=4,hidden_dim=[128,64,64,1],
+                              kernel_size=(5,5), batch_first=True)
 
     if isTrain is False:
         which_epoch = 'latest'
-        load_network(model, 'OpticalFlowLSTM', which_epoch)
+        load_network(model, 'OpticalFlowLSTM', epoch_label=which_epoch, save_dir=save_dir)
 
     model.cuda()
 
@@ -239,7 +229,7 @@ if __name__ == '__main__':
     embeds = nn.Embedding(100, 1)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
 
-    crit = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
+    crit = nn.L1Loss() #nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
     crit.cuda()
 
     if isTrain is True:
@@ -325,8 +315,12 @@ if __name__ == '__main__':
                     sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))
 
                 #mask.save("mask_{}.png".format(frame_idx))
-                prev_img_seq = torch.cat((prev_img_seq, maskT.unsqueeze(0)), 0)
+                if isTrain:
+                    prev_img_seq = torch.cat((prev_img_seq, maskT.unsqueeze(0)), 0)
+                else:
+                    prev_img_seq = torch.cat((prev_img_seq, pred_maskT.unsqueeze(0).cpu()), 0)
 
+                print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
                 loss = crit(pred_maskT, maskT.cuda())
 
                 vid_loss.append(loss.data.cpu().numpy())
@@ -335,7 +329,7 @@ if __name__ == '__main__':
                     loss.backward()
                     optimizer.step()
 
-                if frame_idx%100 == 0:
+                if frame_idx%25 == 0:
                     init_tensor=True
                     prev_img_seq=None
                     word_seq=None
