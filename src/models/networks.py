@@ -538,14 +538,26 @@ class WordUnetGenerator(nn.Module):
         self.same2 = conv_same(64, 16)
         self.same3 = conv_same(16, 3)
 
+        self.pool = pool_layer()
 
-    def forward(self, input, landmark):
+    def pool_layer(self):
+        layer = [nn.MaxPool2d(2,stride=2)]
+        return nn.Sequential(*layer)
+
+
+
+    def forward(self, img, lm):
+        # Preprocess
+        lm1=pool(lm)  # 256/256/3 -> 128/128/3
+        lm2=pool(lm1) # 128/128/3 -> 64/64/3
+        lm3=pool(lm2) # 64/64/3 -> 32/32/3
+
         # Encoder
-        x1 = self.same1(input) # 256/256/3 -> 256/256/16
+        x1 = self.same1(img) # 256/256/3 -> 256/256/16
         x2 = self.down1(x1) # 256/256/16 -> 128/128/32
         x3 = self.down2(x2) # 128/128/32 -> 64/64/64
         x4 = self.down3(x3) # 64/64/64 -> 32/32/128
-        x5 = self.concat1(x4,landmark) # 32/32/128 -> 32/32/160
+        x5 = self.concat1(x4,lm3) # 32/32/128, 32/32/3 -> 32/32/160
 
         # Decoder
         x6 = self.up1(x5,x4,landmark) # 32/32/160 -> 64/64/64
