@@ -230,7 +230,7 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'WordUnet':
-        netG = WordUnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
+        netG = WordUnetGenerator(input_nc, output_nc)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     if len(gpu_ids) > 0:
@@ -523,20 +523,18 @@ class ResnetBlock(nn.Module):
 # https://github.com/milesial/Pytorch-UNet/blob/master/unet
 
 class WordUnetGenerator(nn.Module):
-    def __init__(self,n_channels,n_classes):
+    def __init__(self,dim_in,dim_out):
         super(WordUnetGenerator,self).__init__()
         
-        self.same1 = conv_same(n_channels, 16) #3/256/256 -> 16/256/256
+        self.same1 = conv_same(dim_in, 16) #3/256/256 -> 16/256/256
         self.down1 = conv_down(16, 32)
         self.down2 = conv_down(32, 64)
         self.down3 = conv_down(64, 128)
-        self.concat1 = conv_concat(128,32)
-        self.up1 = conv_up(160, 64, 32)
-        self.up2 = conv_up(160, 32, 32)
-        self.up3 = conv_up(96, 16, 16)
-        self.concat2 = conv_concat(48,16)
-        self.same2 = conv_same(64, 16)
-        self.same3 = conv_same(16, 3)
+        #self.up1 = conv_up(160, 64, 32)
+        self.up1 = conv_up(128,128,3,64)
+        self.up2 = conv_up(64,32,3,32)
+        self.up3 = conv_up(32,16,3,32)
+        self.same2 = conv_same(32, dim_out)
 
         self.pool = pool_layer()
 
@@ -544,30 +542,30 @@ class WordUnetGenerator(nn.Module):
         layer = [nn.MaxPool2d(2,stride=2)]
         return nn.Sequential(*layer)
 
-
-
     def forward(self, img, lm):
         # Preprocess
         lm1=pool(lm)  # 256/256/3 -> 128/128/3
         lm2=pool(lm1) # 128/128/3 -> 64/64/3
-        lm3=pool(lm2) # 64/64/3 -> 32/32/3
+        #lm3=pool(lm2) # 64/64/3 -> 32/32/3
 
         # Encoder
         x1 = self.same1(img) # 256/256/3 -> 256/256/16
         x2 = self.down1(x1) # 256/256/16 -> 128/128/32
         x3 = self.down2(x2) # 128/128/32 -> 64/64/64
         x4 = self.down3(x3) # 64/64/64 -> 32/32/128
-        x5 = self.concat1(x4,lm3) # 32/32/128, 32/32/3 -> 32/32/160
+        #x5 = self.down4(x4) # 32/32/128 -> 16/16/256
+
+        #x5 = torch.cat((x4, lm3), 0)  # 32/32/128, 32/32/3 -> 32/32/131
 
         # Decoder
-        x6 = self.up1(x5,x4,landmark) # 32/32/160 -> 64/64/64
-        x7 = self.up2(x6,x3,landmark) # 128/128/
-        x8 = self.up3(x7,x2,landmark)
-        x9 = self.concat2(x8,x1)
-        x10 = self.same2(x9)
-        x11 = self.same3(x10)
+        #x6 = self.up1(x5,x4,lm3) # 16/16/256, 32/32/128, 32/32/3 -> 32
+        x5 = self.up1(x4,x3,lm2) # 32/32/128, 64/64/64, 64/64/3 -> 64/64/64
+        x6 = self.up2(x5,x2,lm1) # 64/64/64, 128/128/32, 128/128/3 -> 128/128/32
+        x7 = self.up3(x6,x1,lm) # 128/128/32, 256/256/16, 256/256/3 -> 256/256/32
 
-        return x11
+        x8 = self.same3(x7)
+
+        return x8
 
 
 class conv_double(nn.Module): # same size W/H
@@ -602,7 +600,7 @@ class conv_down(nn.Module): # size be half
             nn.Conv2d(in_ch, out_ch, kernel_size=3,stride=2, padding=1, bias=use_bias),
             norm_layer(out_ch),
             nn.ReLU(True),
-            double_conv(out_ch, out_ch)
+            conv_double(out_ch, out_ch)
         )
 
     def forward(self, x):
@@ -610,19 +608,18 @@ class conv_down(nn.Module): # size be half
         return x
 
 class conv_up(nn.Module):
-    def __init__(self, in_ch, out_ch, aug_ch):
+    def __init__(self, in_ch1, in_ch2, in_ch3, out_ch):
         super(conv_up, self).__init__()
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        self.conv = double_conv(in_ch, out_ch)
-        #self.conv = double_conv(in_ch, out_ch)
-        self.aug = nn.Sequential(nn.Conv2d(in_ch, aug_ch, kernel_size=1,stride=1, padding=0))
+        self.conv1 = conv_double(in_ch1 + in_ch2 + in_ch3, out_ch)
+        self.conv2 = conv_double(out_ch, out_ch)
+        #self.aug = nn.Sequential(nn.Conv2d(in_ch, aug_ch, kernel_size=1,stride=1, padding=0))
 
     def forward(self, x1, x2, x3):
         x1 = self.up(x1)
-        x3 = self.aug(x3)
         x = torch.cat([x1, x2, x3], dim=1)
-
-        x = self.conv(x)
+        x = self.conv1(x)
+        x = self.conv2(x)
         return x
 
 
