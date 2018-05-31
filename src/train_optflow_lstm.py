@@ -216,8 +216,8 @@ if __name__ == '__main__':
     print('#training images = %d' % dataset_size)
 
     model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
-                              num_layers=4,hidden_dim=[128,64,64,1],
-                              kernel_size=(5,5), batch_first=True)
+                              num_layers=3,hidden_dim=[3,3,1],
+                              kernel_size=(3,3), batch_first=True)
 
     if isTrain is False:
         which_epoch = 'latest'
