@@ -10,7 +10,7 @@ import os
 import itertools
 from options.train_options import TrainOptions
 from data import CreateDataLoader
-from models.networks import NextFrameConvLSTM
+from models.networks import NextFrameConvLSTM, NLayerDiscriminator
 from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace
 from data.grid_loader import GRID
@@ -175,6 +175,43 @@ def load_network(network, network_label, epoch_label='latest', save_dir="./"):
         print("Cannot Find Model: {}".format(save_path))
         exit(1)
 
+def backwardG(fake, gt, word, optimizer_G, discriminator, crit_gan, critID, w_id=1):
+    optimizer_G.zero_grad()
+    # GAN Loss
+    #loss_G = crit_gan(discriminator(fake), True)
+    fakeG = torch.cat((fake, word), 0)
+    pred_fake = discriminator(fakeG.unsqueeze(0))
+    true = torch.ones(pred_fake.shape).cuda()
+    loss_G = crit_gan(pred_fake, true)
+
+    # ID Loss
+    loss_ID = critID(fake, gt)
+    loss_G_total = loss_G + loss_ID * w_id
+    loss_G_total.backward( retain_graph=True)
+    optimizer_G.step()
+
+    return loss_G_total, loss_G, loss_ID
+
+
+def backwardD(fake, gt, word, optimizer_D, discriminator, crit_gan):
+    # Train Discriminator
+    optimizer_D.zero_grad()
+    gtD = torch.cat((gt, word), 0)
+    pred_real = discriminator(gtD.unsqueeze(0))
+    true = torch.ones(pred_real.shape).cuda()
+    loss_D_real = crit_gan(pred_real, true)
+
+    # Fake
+    fakeD = torch.cat((fake, word), 0)
+    pred_fake = discriminator(fakeD.detach().unsqueeze(0))
+    false = torch.ones(pred_fake.shape).cuda()
+    loss_D_fake = crit_gan(pred_fake, false)
+    # Combined loss
+    loss_D = (loss_D_real + loss_D_fake) * 0.5
+    # backward
+    loss_D.backward()# retain_graph=True)
+    optimizer_D.step()
+    return loss_D
 
 if __name__ == '__main__':
 
@@ -188,10 +225,10 @@ if __name__ == '__main__':
         print("Testing...")
         #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
 
-    save_dir = "./optflow_chkpnts"
+    save_dir = "./optflowGAN_chkpnts"
 
     mode = "train" if isTrain else "test"
-    output_dir = './out_{0}'.format(mode)
+    output_dir = './outGAN_{0}'.format(mode)
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -218,23 +255,32 @@ if __name__ == '__main__':
     model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
                               num_layers=3,hidden_dim=[3,3,1],
                               kernel_size=(3,3), batch_first=True)
+    discriminator = NLayerDiscriminator(input_nc=2)#, use_sigmoid=True)
 
     if isTrain is False:
         which_epoch = 'latest'
         load_network(model, 'OpticalFlowLSTM', epoch_label=which_epoch, save_dir=save_dir)
+        #load_network(discriminator, 'OpticalFlow_D', epoch_label=which_epoch, save_dir=save_dir)
 
     model.cuda()
+    discriminator.cuda()
 
     opticalFlow = OpticalFlow(face_predictor_path)
     embeds = nn.Embedding(100, 1)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
 
-    crit = nn.L1Loss() #nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
-    crit.cuda()
+    crit_gan = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
+    crit_gan.cuda()
+
+    critID = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
+    critID.cuda()
 
     if isTrain is True:
-        optimizer = optim.Adam(itertools.chain(model.parameters()))
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        optimizer_G = optim.Adam(itertools.chain(model.parameters()))
+        scheduler_G = lr_scheduler.StepLR(optimizer_G, step_size=5, gamma=0.1)
+
+        optimizer_D = optim.Adam(itertools.chain(discriminator.parameters()))
+        scheduler_D = lr_scheduler.StepLR(optimizer_D, step_size=5, gamma=0.1)
 
     total_steps = 0
 
@@ -243,7 +289,8 @@ if __name__ == '__main__':
     for epoch in range(0, 100):
 
         if isTrain is True:
-            scheduler.step()
+            scheduler_G.step()
+            scheduler_D.step()
         epoch_start_time = time.time()
         iter_data_time = time.time()
         epoch_iter = 0
@@ -266,7 +313,7 @@ if __name__ == '__main__':
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
                 if isTrain is True:
-                    optimizer.zero_grad()
+                    optimizer_G.zero_grad()
 
                 (img, trans) = frame
                 imgT = toTensor(img)
@@ -320,14 +367,22 @@ if __name__ == '__main__':
                 else:
                     prev_img_seq = torch.cat((prev_img_seq, pred_maskT.unsqueeze(0).cpu()), 0)
 
-                #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
-                loss = crit(pred_maskT, maskT.cuda())
+                # Train Generator (LSTM)
+                if isTrain:
+                    loss_G_total, loss_G, loss_ID = backwardG(pred_maskT, maskT.cuda(), transT.cuda(),
+                                                              optimizer_G, discriminator, crit_gan, critID)
+                    vid_loss.append(loss_ID.data.cpu().numpy())
 
-                vid_loss.append(loss.data.cpu().numpy())
+                    loss_D = backwardD(pred_maskT, maskT.cuda(), transT.cuda(),
+                                       optimizer_D, discriminator, crit_gan)
 
-                if isTrain is True:
-                    loss.backward()
-                    optimizer.step()
+                    if frame_idx%20 == 0:
+                        print("vid{0}: loss_G_total: {1} | loss_G: {2} | loss_ID: {3} | loss_D: {4}"
+                              .format(vid_idx, loss_G_total, loss_G, loss_ID, loss_D))
+                else:
+                    loss = critID(pred_maskT, maskT.cuda())
+                    vid_loss.append(loss.data.cpu().numpy())
+
 
                 if frame_idx%25 == 0:
                     init_tensor=True
@@ -344,6 +399,11 @@ if __name__ == '__main__':
                              epoch_label="ep{0}_{1}".format(epoch,vid_idx),
                              save_dir=save_dir)
 
+                save_network(discriminator, 'OpticalFlow_D', epoch_label='latest', save_dir=save_dir)
+                save_network(discriminator, 'OpticalFlow_D',
+                             epoch_label="ep{0}_{1}".format(epoch,vid_idx),
+                             save_dir=save_dir)
+
             avg_loss = sum(vid_loss) / len(vid_loss)
             print("ep: {0}, video: {1}, Loss: {2}".format(epoch, vid_idx, avg_loss))
             print("===========================")
@@ -352,10 +412,16 @@ if __name__ == '__main__':
             save_network(model, 'OpticalFlowLSTM',
                          epoch_label="ep{0}".format(epoch),
                          save_dir=save_dir)
+            save_network(discriminator, 'OpticalFlow_D',
+                         epoch_label="ep{0}".format(epoch),
+                         save_dir=save_dir)
         else:
             # If we are testing, no need to go through the dataset again for another epoch
             break
     if isTrain:
         save_network(model, 'OpticalFlowLSTM',
+                     epoch_label="complete",
+                     save_dir=save_dir)
+        save_network(discriminator, 'OpticalFlowLSTM',
                      epoch_label="complete",
                      save_dir=save_dir)
