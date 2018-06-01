@@ -202,7 +202,7 @@ if __name__ == '__main__':
     face_size=(288, 360)
     save_freq=20
 
-    face_predictor_path = '/home/jake/classes/cs703/Project/dev/TellGAN/src/assests/predictors/shape_predictor_68_face_landmarks.dat'
+    face_predictor_path = './assests/predictors/shape_predictor_68_face_landmarks.dat'
 
     toTensor = transforms.ToTensor()
     frame_transforms = transforms.Compose([

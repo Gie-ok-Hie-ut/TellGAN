@@ -316,7 +316,7 @@ class TellGANModel(BaseModel):
         weight_G = 1
 
         # Loss Calculate
-        self.fake_dspeak_enc = torch.cat((self.convlstm_output.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
+        self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
 
         self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
