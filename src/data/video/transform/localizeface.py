@@ -1,7 +1,9 @@
 from __future__ import print_function
 
+import cv2
 import dlib
 from PIL import Image
+from scipy.misc import imresize
 import numpy as np
 
 class LocalizeFace(object):
@@ -10,18 +12,18 @@ class LocalizeFace(object):
     """
 
 
-    def __init__(self, height=None, width=None): #, predictor_path):
+    def __init__(self, height=None, width=None, predictor_path=None, mouthonly=False):
         """
         For GRID each frame is (288, 360, 3) by default, the height/width options force the bounding boxes
         to be a specific size.
         """
-
-        #self.predictor_path = predictor_path
-
-        self.detector = dlib.get_frontal_face_detector()
+        self.detector = FeaturePredictor(predictor_path)
+        self.predictor_path = predictor_path
         self.height = height
         self.width = width
+        self.isMouthOnly = mouthonly
 
+        self.HORIZONTAL_PAD = 0.19
         x1 = self.width if self.width is not None else 0
         y1 = self.height if self.height is not None else 0
 
@@ -35,6 +37,7 @@ class LocalizeFace(object):
 
 
     def __call__(self, img):
+
         """
         Args:
             img (PIL Image): Image to be scaled.
@@ -42,24 +45,87 @@ class LocalizeFace(object):
         Returns:
             PIL Image with face extracted, returns image if no face detected.
         """
+
+        if self.predictor_path is None:
+            return self.naive_crop(img)
+
+        localized, _ = self.localize(img, self.isMouthOnly)
+        return localized
+
+
+    def localize(self, frame, mouthonly=False):
+        normalize_ratio = 1
+
+        fpoints = self.detector.getFeaturePoints(frame, mouthonly)
+
+        if fpoints is None:
+            return frame, None
+
+        fpoints = fpoints.squeeze().astype(np.int)
+
+        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mask = self.detector.create_mask(frame_gray, np.expand_dims(fpoints, axis=1))
+
+        # Reverse coords, as np coords are in [y,x]
+        centroid = np.mean(fpoints[:, -2:], axis=0)
+
+        if normalize_ratio is None:
+            if self.width > self.height:
+                rightpt = np.max(fpoints[:, :-1]) * (1.0 + self.HORIZONTAL_PAD)
+                leftpt = np.min(fpoints[:, :-1]) * (1.0 - self.HORIZONTAL_PAD)
+
+                normalize_ratio = self.width / float(rightpt - leftpt)
+            else:
+                toppt = np.max(fpoints[:, :1]) * (1.0 + self.HORIZONTAL_PAD)
+                bottompt = np.min(fpoints[:, :1]) * (1.0 - self.HORIZONTAL_PAD)
+
+                normalize_ratio = self.width / float(toppt - bottompt)
+
+        new_img_shape = (int(frame.shape[0] * normalize_ratio), int(frame.shape[1] * normalize_ratio))
+
+        resized_img = imresize(frame, new_img_shape)
+        resized_mask = imresize(mask, new_img_shape)
+
+        centroid_norm = centroid * normalize_ratio
+
+        object_l = int(centroid_norm[0] - self.width / 2)
+        object_r = int(centroid_norm[0] + self.width / 2)
+        object_t = int(centroid_norm[1] - self.height / 2)
+        object_b = int(centroid_norm[1] + self.height / 2)
+
+        localized = resized_img[object_t:object_b, object_l:object_r]
+        localized_mask = resized_mask[object_t:object_b, object_l:object_r]
+
+        return self.detector.matToPil(localized), self.detector.matToPil(localized_mask)
+
+
+
+    def naive_crop(self, img):
+        """
+                Args:
+                    img (PIL Image): Image to be scaled.
+
+                Returns:
+                    PIL Image with face extracted, returns image if no face detected.
+                """
         # need grayscale for dlib face detection
         img_gray = np.array(img.convert('L'))
         faces = self.detector(img_gray, 1)
 
-        #print("Faces: ", len(faces))
+        # print("Faces: ", len(faces))
         bb = None
         for k, rect in enumerate(faces):
-            #print("k: ", k)
-            #print("rect: ", rect)
-            #shape = self.predictor(img_gray, rect)
+            # print("k: ", k)
+            # print("rect: ", rect)
+            # shape = self.predictor(img_gray, rect)
             bb = self.rect_to_bb(rect)
             break
-            #i = -1
-        #if shape is None: # Detector doesn't detect face, just return as is
+            # i = -1
+        # if shape is None: # Detector doesn't detect face, just return as is
         #    return img
-        #shape = self.shape_to_np(shape)
+        # shape = self.shape_to_np(shape)
 
-        #face_crop = img[rect.left():rect.right(), rect.top():rect.bottom()]
+        # face_crop = img[rect.left():rect.right(), rect.top():rect.bottom()]
 
         if bb is None:
             bb = self.prev_bb
@@ -67,35 +133,32 @@ class LocalizeFace(object):
         else:
             self.prev_bb = bb
 
-        
         if self.width is not None:
-            (x0,y0,x1,y1) = bb
+            (x0, y0, x1, y1) = bb
             face_w = x1 - x0
 
-            cx = x0 + face_w//2
+            cx = x0 + face_w // 2
 
-            new_x0 = cx - self.width//2
+            new_x0 = cx - self.width // 2
             new_x1 = new_x0 + self.width
 
             bb = (new_x0, y0, new_x1, y1)
 
         if self.height is not None:
-            (x0,y0,x1,y1) = bb
+            (x0, y0, x1, y1) = bb
 
             face_h = y1 - y0
 
-            cy = y0 + face_h//2
+            cy = y0 + face_h // 2
 
-            new_y0 = cy - self.height//2
+            new_y0 = cy - self.height // 2
             new_y1 = new_y0 + self.height
 
             bb = (x0, new_y0, x1, new_y1)
 
-      
-
         face_crop = img.crop(bb)
 
-        #print("shape: ", shape.shape)
+        # print("shape: ", shape.shape)
 
         return face_crop
 
@@ -123,6 +186,119 @@ class LocalizeFace(object):
         # return a tuple of (x, y, w, h)
         return (x, y, w, h)
 
+
+class FeaturePredictor(object):
+    def __init__(self, feature_model=None):
+        self.feature_model = feature_model
+        self.face_detector = dlib.get_frontal_face_detector()
+        self.feature_detector = dlib.shape_predictor(self.feature_model)
+
+        # Parameters for lucas kanade optical flow
+        self.lk_params = dict(winSize=(15, 15),
+                         maxLevel=2,
+                         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+    def getFlowMask(self, old, new, features0=None):
+        #mat0 = self.pilToMat(pil0)
+        gray0 = cv2.cvtColor(old, cv2.COLOR_BGR2GRAY)
+        #mat1 = self.pilToMat(pil1)
+        gray1 = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
+        features1 = None
+
+        if features0 is None:
+            features0 = self.getFeaturePoints(gray0)
+
+        # May fail to get features, return None and blank mask
+        if features0 is not None:
+            features1, features0 = self.getFlow(gray0, gray1, features0)
+
+        features1 = features1.reshape(-1,1,2) if features1 is not None else None
+
+        mask = self.create_mask(gray1, features1)
+
+        return features1, self.matToPil(mask)
+
+    def getFeatureMask(self, pil0, mouthonly=False):
+        #gray0 = cv2.cvtColor(self.pilToMat(pil0), cv2.COLOR_BGR2GRAY)
+        gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
+        features0 = self.getFeaturePoints(gray0, mouthonly)
+
+        mask = self.create_mask(gray0, features0)
+        return features0, self.matToPil(mask)
+
+
+    def getFlow(self, old_gray, frame_gray, features0):
+        features1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, features0,
+                                                      None, ** self.lk_params)
+        # Select good points
+        good_new = features1[st == 1]
+        good_old = features0[st == 1]
+
+        return good_new, good_old
+
+    def create_mask(self, img, features):
+
+        mask = np.zeros_like(img)
+        if features is None:
+            return mask
+
+        features_ = np.copy(features).astype(np.int)
+
+        mask[features_[:,:,1], features_[:,:,0]] = 255
+
+        return mask
+
+
+    def locate(self, img_grey):
+        faces = self.face_detector(img_grey, 1)
+        return faces
+
+    def getFeaturePoints(self, img_grey, mouth_only=False):
+        faces = self.locate(img_grey)
+        features = None
+
+        for k, rect in enumerate(faces):
+            # print("k: ", k)
+            # print("rect: ", rect)
+            # shape = self.predictor(img_gray, rect)
+            features = self.feature_detector(img_grey, rect)
+            break
+
+        feat_points = np.asfarray([])
+        if features is None:
+            return None
+
+        for i, part in enumerate(features.parts()):
+            fpoint = np.asfarray([part.x, part.y])
+            # filter if index values larger than image
+            if (fpoint < 0).any() or fpoint[0] >= img_grey.shape[1] or fpoint[1] >= img_grey.shape[0]:
+                print("ignoring point: {} | imgsize: {}".format(fpoint,img_grey.shape))
+                continue
+            if i is 0:
+                feat_points = fpoint
+            else:
+                feat_points = np.vstack((feat_points, fpoint))
+
+        if mouth_only is True:
+            # starting at 1, mouth indices are 49-68
+            feat_points = feat_points[48:68]
+
+        #if for_optical_flow:
+        feat_points = np.expand_dims(feat_points, axis=1).astype(np.float32)
+
+
+        # print("face_points_shape: ", feat_points.shape)
+        # print("feat_points: ", feat_points)
+        return feat_points
+
+    def matToPil(self, mat_img):
+        return Image.fromarray(mat_img)
+
+    def pilToMat(self, pil_img):
+        pil_image = pil_img.convert('RGB')
+        open_cv_image = np.array(pil_image)
+        # Convert RGB to BGR
+        return open_cv_image  # [:, :, ::-1].copy()
 
 def main():
 
