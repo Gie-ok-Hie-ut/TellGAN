@@ -157,6 +157,14 @@ def get_arguments():
                         help="Do not save ceckpoints, for testing")
     return parser.parse_args()
 
+def init_hidden(layers, hidden_dim):
+    # Before we've done anything, we dont have any hidden state.
+    # Refer to the Pytorch documentation to see exactly
+    # why they have this dimensionality.
+    # The axes semantics are (num_layers, minibatch_size, hidden_dim)
+    return (torch.zeros(layers, 1, hidden_dim).cuda(),
+            torch.zeros(layers, 1, hidden_dim).cuda())
+
 if __name__ == '__main__':
 
     args = get_arguments()
@@ -203,6 +211,9 @@ if __name__ == '__main__':
 
     save_freq=20
 
+    # number of xy feature points (xyxyxyxyxyxyxy...)
+    nFeaturePoints = 68 if isMouthOnly is False else 20
+
     face_predictor_path = '/home/jake/classes/cs703/Project/dev/TellGAN/src/assests/predictors/shape_predictor_68_face_landmarks.dat'
 
     toTensor = transforms.ToTensor()
@@ -219,47 +230,40 @@ if __name__ == '__main__':
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
-    model = NextFrameConvLSTM(input_size=face_size,input_dim=2,
-                              num_layers=3,hidden_dim=[3,3,1],
-                              kernel_size=(3,3), batch_first=True)
+    word_dim = 1
+    embeds = nn.Embedding(100, word_dim)  # 100 words in vocab,  dimensional embeddings
+    word_to_ix = {}
+    hidden_layers=2
+    model = nn.LSTM(input_size=(nFeaturePoints*2)+word_dim, hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
+
+    hidden_state = init_hidden(hidden_layers,nFeaturePoints*2)
+
     discriminator = NLayerDiscriminator(input_nc=1)#, use_sigmoid=True)
 
     if isTrain is False or isContinue is True:
         which_epoch = 'latest'
-        load_network(model, 'OpticalFlowLSTM', epoch_label=which_epoch, save_dir=save_dir)
-
-        if isContinue:
-            load_network(discriminator, 'OpticalFlow_D', epoch_label=which_epoch, save_dir=save_dir)
+        load_network(model, 'FeaturePointLSTM', epoch_label=which_epoch, save_dir=save_dir)
 
     model.cuda()
     discriminator.cuda()
 
     opticalFlow = FeaturePredictor(face_predictor_path)
-    embeds = nn.Embedding(100, 1)  # 100 words in vocab,  dimensional embeddings
-    word_to_ix = {}
-
-    crit_gan = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
-    crit_gan.cuda()
-
-    critID = nn.MSELoss()  # nn.BCEWithLogitsLoss() #GANLoss()
-    critID.cuda()
+    crit = nn.MSELoss()
+    crit.cuda()
 
     if isTrain is True:
         optimizer_G = optim.Adam(itertools.chain(model.parameters()))
         scheduler_G = lr_scheduler.StepLR(optimizer_G, step_size=5, gamma=0.1)
 
-        optimizer_D = optim.Adam(itertools.chain(discriminator.parameters()))
-        scheduler_D = lr_scheduler.StepLR(optimizer_D, step_size=5, gamma=0.1)
-
     total_steps = 0
 
     vid_path = "%s/pred_mask_{0}.mp4" % output_dir
+
 
     for epoch in range(ep_start, 100):
 
         if isTrain is True:
             scheduler_G.step()
-            scheduler_D.step()
         epoch_start_time = time.time()
         iter_data_time = time.time()
         epoch_iter = 0
@@ -277,7 +281,7 @@ if __name__ == '__main__':
             #epoch_iter += opt.batchSize
 
             init_tensor=True
-            prev_img_seq = None
+            prev_feat_seq = None
             word_seq = None
             prev_mask = None
             prev_frame = None
@@ -297,7 +301,7 @@ if __name__ == '__main__':
                 #if imgT.size(1) is not face_size[0] or imgT.size(2) is not face_size[1] or trans is None:
                 if trans is None:
                     print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, imgT.size(), trans))
-                    prev_img_seq=None
+                    prev_feat_seq=None
                     word_seq=None
                     init_tensor=True
                     continue
@@ -307,79 +311,68 @@ if __name__ == '__main__':
 
 
                 #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
-                if islocalize:
-                    localized_frame, mask = localizer.localize(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
-                else:
-                    feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
-                    if feat0 is None:
-                        mask = None
+                feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
 
-                if mask is None:
+                if feat0 is None or nFeaturePoints > feat0.shape[0]:
+                    print("Initializing State: {}".format(feat0.shape))
                     init_tensor=True
-                    prev_img_seq=None
+                    prev_feat_seq=None
                     word_seq=None
                     continue
 
-
+                featTB4 = Variable(torch.from_numpy(feat0))
+                featT = featTB4.view(featTB4.numel())
+                featT2D = featT.view(nFeaturePoints, 1, 2)
                 #OpticalFlow.matToPil(mask).show()
                 maskT = Variable(toTensor(mask))
 
                 lookup_tensor = torch.LongTensor([word_to_ix[trans]])
-                trans_embed = embeds(Variable(lookup_tensor))
-                transT = trans_embed.repeat(maskT.size(1),maskT.size(2)).unsqueeze(0)
+                transT= embeds(Variable(lookup_tensor))
 
                 # INitialize the input with ground trouth only
                 if (init_tensor == True):
-                    prev_img_seq = maskT.unsqueeze(0)
+                    hidden_state = init_hidden(hidden_layers, nFeaturePoints * 2)
+                    prev_feat_seq = featT.unsqueeze(0)
                     init_tensor = False
                     if vid_idx % save_freq == 0:
                         sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
                     continue
 
                 if word_seq is not None:
-                    word_seq = torch.cat((word_seq, transT.unsqueeze(0)), 0)
+                    word_seq = torch.cat((word_seq, transT), 0)
                 else:
-                    word_seq = transT.unsqueeze(0)
+                    word_seq = transT
 
                 #Concat previous image and current word, add batch dim
-                input = torch.cat((prev_img_seq, word_seq), 1).cuda()
+                input = torch.cat((prev_feat_seq, word_seq), 1).unsqueeze(1).cuda()
 
-                pred_maskT = model(input.detach())
+                pred_featT_seq, hidden_state = model(input.detach(), hidden_state)
+
+                #Get last value in sequence
+                pred_featT = pred_featT_seq[-1]
 
                 if vid_idx % save_freq == 0:
-                    pred_mask = (pred_maskT.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
-                    pil_pred_mask = opticalFlow.matToPil(np.squeeze(pred_mask, axis=2))
+                    pred_featT2d = pred_featT.view(nFeaturePoints,1,2)
+                    pred_feat = pred_featT2d.data.cpu().numpy()
+                    pred_mask = opticalFlow.create_mask(mask, pred_feat)
+                    pil_pred_mask = opticalFlow.matToPil(pred_mask)
                     sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))
 
                 #mask.save("mask_{}.png".format(frame_idx))
                 if isTrain:
-                    prev_img_seq = torch.cat((prev_img_seq, maskT.unsqueeze(0)), 0)
+                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
                 else:
-                    prev_img_seq = torch.cat((prev_img_seq, pred_maskT.unsqueeze(0).cpu()), 0)
+                    prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.unsqueeze(0).cpu()), 0)
 
                 # Train Generator (LSTM)
-                if isTrain:
-                    loss_G_total, loss_G, loss_ID = \
-                        backwardG(pred_maskT, maskT.cuda(), transT.cuda(),
-                                  optimizer_G, discriminator, crit_gan, critID)
-
-                    vid_loss.append(loss_ID.data.cpu().numpy())
-
-                    loss_D = backwardD(pred_maskT, maskT.cuda(), transT.cuda(),
-                                       optimizer_D, discriminator, crit_gan)
-
-                    if frame_idx%20 == 0:
-                        print("vid{0}: loss_G_total: {1} | loss_G: {2} | loss_ID: {3} | loss_D: {4}"
-                              .format(vid_idx, loss_G_total, loss_G, loss_ID, loss_D))
-                else:
-                    loss = critID(pred_maskT, maskT.cuda())
-                    vid_loss.append(loss.data.cpu().numpy())
+                loss = crit(pred_featT, featT.unsqueeze(0).cuda())
+                vid_loss.append(loss.data.cpu().numpy())
 
                 #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
 
-                if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%16 == 0):
+                if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%25 == 0):
                     init_tensor=True
-                    prev_img_seq=None
+                    prev_feat_seq=None
                     word_seq=None
 
                 # Setup next iteration
@@ -392,14 +385,10 @@ if __name__ == '__main__':
 
             if isTrain and isSave:
                 if vid_idx % 20 == 0:
-                    save_network(model, 'OpticalFlowLSTM', epoch_label='latest', save_dir=save_dir)
-                    save_network(discriminator, 'OpticalFlow_D', epoch_label='latest', save_dir=save_dir)
+                    save_network(model, 'FeaturePointLSTM', epoch_label='latest', save_dir=save_dir)
 
                 if vid_idx % 100 == 0:
-                    save_network(model, 'OpticalFlowLSTM',
-                                 epoch_label="ep{0}_{1}".format(epoch,vid_idx),
-                                 save_dir=save_dir)
-                    save_network(discriminator, 'OpticalFlow_D',
+                    save_network(model, 'FeaturePointLSTM',
                                  epoch_label="ep{0}_{1}".format(epoch,vid_idx),
                                  save_dir=save_dir)
 
@@ -408,19 +397,13 @@ if __name__ == '__main__':
             print("===========================")
 
         if isTrain and isSave:
-            save_network(model, 'OpticalFlowLSTM',
-                         epoch_label="ep{0}".format(epoch),
-                         save_dir=save_dir)
-            save_network(discriminator, 'OpticalFlow_D',
+            save_network(model, 'FeaturePointLSTM',
                          epoch_label="ep{0}".format(epoch),
                          save_dir=save_dir)
         else:
             # If we are testing, no need to go through the dataset again for another epoch
             break
     if isTrain and isSave:
-        save_network(model, 'OpticalFlowLSTM',
-                     epoch_label="complete",
-                     save_dir=save_dir)
-        save_network(discriminator, 'OpticalFlowLSTM',
+        save_network(model, 'FeaturePointLSTM',
                      epoch_label="complete",
                      save_dir=save_dir)
