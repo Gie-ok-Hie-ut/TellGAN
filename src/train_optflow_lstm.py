@@ -50,11 +50,11 @@ class OpticalFlow(object):
                          maxLevel=2,
                          criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-    def run(self, pil0, pil1, features0=None):
+    def run(self, old, new, features0=None):
         #mat0 = self.pilToMat(pil0)
-        gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
+        gray0 = cv2.cvtColor(old, cv2.COLOR_BGR2GRAY)
         #mat1 = self.pilToMat(pil1)
-        gray1 = cv2.cvtColor(pil1, cv2.COLOR_BGR2GRAY)
+        gray1 = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
         features1 = None
 
         if features0 is None:
@@ -90,10 +90,12 @@ class OpticalFlow(object):
 
     def create_mask(self, img, features):
 
-        features = np.copy(features).astype(np.int)
         mask = np.zeros_like(img)
         if features is None:
             return mask
+
+        features = np.copy(features).astype(np.int)
+
         mask[features[:,:,1], features[:,:,0]] = 255
 
         return mask
@@ -223,7 +225,7 @@ if __name__ == '__main__':
         print("Trainging...")
     else:
         print("Testing...")
-        #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
+        dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
 
     save_dir = "./optflowGAN_chkpnts"
 
@@ -307,6 +309,8 @@ if __name__ == '__main__':
             init_tensor=True
             prev_img_seq = None
             word_seq = None
+            prev_feat = None
+            prev_frame = None
             vid_loss = []
             #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
             sample_frames = []
@@ -335,6 +339,17 @@ if __name__ == '__main__':
 
                 #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
                 feat0, mask = opticalFlow.getInit(opticalFlow.pilToMat(img))
+
+                if feat0 is None and prev_feat is not None:
+                    feat0, mask = opticalFlow.run(opticalFlow.pilToMat(prev_frame),
+                                                  opticalFlow.pilToMat(img), prev_feat)
+
+                if feat0 is None:
+                    init_tensor=True
+                    prev_img_seq=None
+                    word_seq=None
+                    continue
+
                 #OpticalFlow.matToPil(mask).show()
                 maskT = Variable(toTensor(mask))
 
@@ -383,11 +398,16 @@ if __name__ == '__main__':
                     loss = critID(pred_maskT, maskT.cuda())
                     vid_loss.append(loss.data.cpu().numpy())
 
+                #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
 
-                if frame_idx%25 == 0:
+                if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%16 == 0):
                     init_tensor=True
                     prev_img_seq=None
                     word_seq=None
+
+                # Setup next iteration
+                prev_frame = img
+                prev_feat = feat0
 
             if vid_idx % save_freq == 0:
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
