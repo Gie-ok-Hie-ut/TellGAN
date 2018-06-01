@@ -46,7 +46,7 @@ def is_file(fname):
 
 
 
-class OpticalFlow(object):
+class FeaturePredictor(object):
     def __init__(self, feature_model=None):
         self.feature_model = feature_model
         self.face_detector = dlib.get_frontal_face_detector()
@@ -57,7 +57,7 @@ class OpticalFlow(object):
                          maxLevel=2,
                          criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
-    def run(self, old, new, features0=None):
+    def opticalFlow(self, old, new, features0=None):
         #mat0 = self.pilToMat(pil0)
         gray0 = cv2.cvtColor(old, cv2.COLOR_BGR2GRAY)
         #mat1 = self.pilToMat(pil1)
@@ -77,10 +77,10 @@ class OpticalFlow(object):
 
         return features1, self.matToPil(mask)
 
-    def getInit(self, pil0):
+    def getFeatureMask(self, pil0, mouthonly=False):
         #gray0 = cv2.cvtColor(self.pilToMat(pil0), cv2.COLOR_BGR2GRAY)
         gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
-        features0 = self.getFeaturePoints(gray0)
+        features0 = self.getFeaturePoints(gray0, mouthonly)
 
         mask = self.create_mask(gray0, features0)
         return features0, self.matToPil(mask)
@@ -102,15 +102,13 @@ class OpticalFlow(object):
             return mask
 
         features = np.copy(features).astype(np.int)
-        try:
-            mask[features[:,:,1], features[:,:,0]] = 255
-        except:
-            pass
+
+        mask[features[:,:,1], features[:,:,0]] = 255
 
         return mask
 
 
-    def getFeaturePoints(self, img_grey):
+    def getFeaturePoints(self, img_grey, mouthonly=False):
         faces = self.face_detector(img_grey, 1)
         features = None
 
@@ -135,8 +133,12 @@ class OpticalFlow(object):
                 feat_points = fpoint
             else:
                 feat_points = np.vstack((feat_points, fpoint))
-        feat_points = np.expand_dims(feat_points, axis=1)
 
+        if mouthonly is True:
+            # starting at 1, mouth indices are 49-68
+            feat_points = feat_points[48:68]
+
+        feat_points = np.expand_dims(feat_points, axis=1)
 
 
         # print("face_points_shape: ", feat_points.shape)
@@ -171,6 +173,7 @@ def save_network(network, network_label, epoch_label):
 def save_network(network, network_label, epoch_label='latest', save_dir="./"):
     save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
     save_path = os.path.join(save_dir, save_filename)
+    print("Saving... {}".format(save_path))
     torch.save(network.cpu().state_dict(), save_path)
     if torch.cuda.is_available():
         network.cuda()
@@ -197,6 +200,7 @@ def backwardG(fake, gt, word, optimizer_G, discriminator, crit_gan, critID, w_id
 
     # ID Loss
     loss_ID = critID(fake, gt)
+
     loss_G_total = loss_G + loss_ID * w_id
     loss_G_total.backward(retain_graph=True)
     optimizer_G.step()
@@ -252,6 +256,8 @@ def get_arguments():
     parser.add_argument("--vid-start", type=int, dest="vid_start",
                         default=0,
                         help="video for when to continue training")
+    parser.add_argument("--nosave", action="store_false", dest="isSave", default=True,
+                        help="Do not save ceckpoints, for testing")
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -265,13 +271,17 @@ if __name__ == '__main__':
     face_predictor_path = args.face_predictor_path
     ep_start = args.ep_start
     vid_start = args.vid_start
+    isSave = args.isSave
 
     #force continue to be false if not training
     isContinue = args.isContinue if isTrain is True else False
 
+
     #dataroot = "/home/jake/classes/cs703/Project/data/grid/"
     if isTrain:
         print("Training(Continue:{0},ep:{1},vid{2})...".format(isContinue,ep_start,vid_start))
+        if not isSave:
+            print("WARNING: Not saving checkpoints!")
     else:
         print("Testing...")
         #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
@@ -318,7 +328,7 @@ if __name__ == '__main__':
     model.cuda()
     discriminator.cuda()
 
-    opticalFlow = OpticalFlow(face_predictor_path)
+    opticalFlow = FeaturePredictor(face_predictor_path)
     embeds = nn.Embedding(100, 1)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
 
@@ -392,11 +402,11 @@ if __name__ == '__main__':
                 transT = trans_embed.repeat(imgT.size(1),imgT.size(2)).unsqueeze(0)
 
                 #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
-                feat0, mask = opticalFlow.getInit(opticalFlow.pilToMat(img))
+                feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=True)
 
-                if feat0 is None and prev_feat is not None:
-                    feat0, mask = opticalFlow.run(opticalFlow.pilToMat(prev_frame),
-                                                  opticalFlow.pilToMat(img), prev_feat)
+                #if feat0 is None and prev_feat is not None:
+                #    feat0, mask = opticalFlow.run(opticalFlow.pilToMat(prev_frame),
+                #                                  opticalFlow.pilToMat(img), prev_feat)
 
                 if feat0 is None:
                     init_tensor=True
@@ -438,8 +448,10 @@ if __name__ == '__main__':
 
                 # Train Generator (LSTM)
                 if isTrain:
-                    loss_G_total, loss_G, loss_ID = backwardG(pred_maskT, maskT.cuda(), transT.cuda(),
-                                                              optimizer_G, discriminator, crit_gan, critID)
+                    loss_G_total, loss_G, loss_ID = \
+                        backwardG(pred_maskT, maskT.cuda(), transT.cuda(),
+                                  optimizer_G, discriminator, crit_gan, critID)
+
                     vid_loss.append(loss_ID.data.cpu().numpy())
 
                     loss_D = backwardD(pred_maskT, maskT.cuda(), transT.cuda(),
@@ -467,22 +479,24 @@ if __name__ == '__main__':
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
                 skvideo.io.vwrite(vid_path.format(vid_idx), outputdata)
 
-            if isTrain and vid_idx % 20 == 0:
-                save_network(model, 'OpticalFlowLSTM', epoch_label='latest', save_dir=save_dir)
-                save_network(model, 'OpticalFlowLSTM',
-                             epoch_label="ep{0}_{1}".format(epoch,vid_idx),
-                             save_dir=save_dir)
+            if isTrain and isSave:
+                if vid_idx % 20 == 0:
+                    save_network(model, 'OpticalFlowLSTM', epoch_label='latest', save_dir=save_dir)
+                    save_network(discriminator, 'OpticalFlow_D', epoch_label='latest', save_dir=save_dir)
 
-                save_network(discriminator, 'OpticalFlow_D', epoch_label='latest', save_dir=save_dir)
-                save_network(discriminator, 'OpticalFlow_D',
-                             epoch_label="ep{0}_{1}".format(epoch,vid_idx),
-                             save_dir=save_dir)
+                if vid_idx % 100 == 0:
+                    save_network(model, 'OpticalFlowLSTM',
+                                 epoch_label="ep{0}_{1}".format(epoch,vid_idx),
+                                 save_dir=save_dir)
+                    save_network(discriminator, 'OpticalFlow_D',
+                                 epoch_label="ep{0}_{1}".format(epoch,vid_idx),
+                                 save_dir=save_dir)
 
             avg_loss = sum(vid_loss) / len(vid_loss)
             print("ep: {0}, video: {1}, Loss: {2}".format(epoch, vid_idx, avg_loss))
             print("===========================")
 
-        if isTrain:
+        if isTrain and isSave:
             save_network(model, 'OpticalFlowLSTM',
                          epoch_label="ep{0}".format(epoch),
                          save_dir=save_dir)
@@ -492,7 +506,7 @@ if __name__ == '__main__':
         else:
             # If we are testing, no need to go through the dataset again for another epoch
             break
-    if isTrain:
+    if isTrain and isSave:
         save_network(model, 'OpticalFlowLSTM',
                      epoch_label="complete",
                      save_dir=save_dir)
