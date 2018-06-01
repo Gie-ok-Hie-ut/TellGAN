@@ -23,21 +23,28 @@ from torch.autograd import Variable
 from PIL import Image
 import skvideo.io
 
+class FullPaths(argparse.Action):
+    """Expand user- and relative-paths"""
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
 
-def get_arguments():
-    """Parse all the arguments provided from the CLI.
+def is_dir(dirname):
+    """Checks if a path is an actual directory"""
+    if not os.path.isdir(dirname):
+        msg = "{0} is not a directory".format(dirname)
+        raise argparse.ArgumentTypeError(msg)
+    else:
+        return dirname
 
-    Returns:
-      A list of parsed arguments.
-    """
-    parser = argparse.ArgumentParser(description="Denoise Autoencoder.")
-    parser.add_argument("--train", action="store_true", dest="isTrain", default=True,
-                        help="Train model, save checkpoints (Default)")
-    parser.add_argument("--test", action="store_false", dest="isTrain", default=True,
-                        help="Test model, load checkpoints")
-    return parser.parse_args()
+def is_file(fname):
+    """Checks if a path is an actual directory"""
+    if not os.path.isfile(fname):
+        msg = "{0} is not a file".format(fname)
+        raise argparse.ArgumentTypeError(msg)
+    else:
+        return fname
 
-args = get_arguments()
+
 
 class OpticalFlow(object):
     def __init__(self, feature_model=None):
@@ -64,9 +71,9 @@ class OpticalFlow(object):
         if features0 is not None:
             features1, features0 = self.getFlow(gray0, gray1, features0)
 
-        mask = self.create_mask(gray1, features1)
-
         features1 = features1.reshape(-1,1,2) if features1 is not None else None
+
+        mask = self.create_mask(gray1, features1)
 
         return features1, self.matToPil(mask)
 
@@ -95,8 +102,10 @@ class OpticalFlow(object):
             return mask
 
         features = np.copy(features).astype(np.int)
-
-        mask[features[:,:,1], features[:,:,0]] = 255
+        try:
+            mask[features[:,:,1], features[:,:,0]] = 255
+        except:
+            pass
 
         return mask
 
@@ -215,22 +224,62 @@ def backwardD(fake, gt, word, optimizer_D, discriminator, crit_gan):
     optimizer_D.step()
     return loss_D
 
+def get_arguments():
+    """Parse all the arguments provided from the CLI.
+
+    Returns:
+      A list of parsed arguments.
+    """
+    parser = argparse.ArgumentParser(description="Denoise Autoencoder.")
+    parser.add_argument("--train", action="store_true", dest="isTrain", default=True,
+                        help="Train model, save checkpoints (Default)")
+    parser.add_argument("--test", action="store_false", dest="isTrain", default=True,
+                        help="Test model, load checkpoints")
+    parser.add_argument("--continue", action="store_true", dest="isContinue", default=False,
+                        help="load checkpoints and start training, see --ep-start and --vid-start")
+    parser.add_argument("--dataroot", action=FullPaths, type=is_dir, dest="dataroot", default="./",
+                        help="data dir")
+    parser.add_argument("--ckptdir", action=FullPaths, dest="chkptdir", default="./chkpt",
+                        help="directory for loading/saving checkpoints")
+    parser.add_argument("--outdir", action=FullPaths, dest="outdir", default="./out",
+                        help="directory for ouput of videos and images from testing/training")
+    parser.add_argument("--features-model", action=FullPaths, type=is_file, dest="face_predictor_path",
+                        default="./shape_predictor_68_face_landmarks.dat",
+                        help="directory for loading/saving checkpoints")
+    parser.add_argument("--ep-start", type=int, dest="ep_start",
+                        default=0,
+                        help="epoch for when to continue training")
+    parser.add_argument("--vid-start", type=int, dest="vid_start",
+                        default=0,
+                        help="video for when to continue training")
+    return parser.parse_args()
+
 if __name__ == '__main__':
 
     args = get_arguments()
 
     isTrain = args.isTrain
-    dataroot = "/home/jake/classes/cs703/Project/data/grid/"
+    dataroot = args.dataroot
+    save_dir = args.chkptdir
+    output_dir = args.outdir
+    face_predictor_path = args.face_predictor_path
+    ep_start = args.ep_start
+    vid_start = args.vid_start
+
+    #force continue to be false if not training
+    isContinue = args.isContinue if isTrain is True else False
+
+    #dataroot = "/home/jake/classes/cs703/Project/data/grid/"
     if isTrain:
-        print("Trainging...")
+        print("Training(Continue:{0},ep:{1},vid{2})...".format(isContinue,ep_start,vid_start))
     else:
         print("Testing...")
-        dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
+        #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
 
-    save_dir = "./optflowGAN_chkpnts"
+    #save_dir = "./optflowGAN_chkpnts"
 
     mode = "train" if isTrain else "test"
-    output_dir = './outGAN_{0}'.format(mode)
+    output_dir = '{0}_{1}'.format(output_dir,mode)
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -259,10 +308,12 @@ if __name__ == '__main__':
                               kernel_size=(3,3), batch_first=True)
     discriminator = NLayerDiscriminator(input_nc=1)#, use_sigmoid=True)
 
-    if isTrain is False:
+    if isTrain is False or isContinue is True:
         which_epoch = 'latest'
         load_network(model, 'OpticalFlowLSTM', epoch_label=which_epoch, save_dir=save_dir)
-        #load_network(discriminator, 'OpticalFlow_D', epoch_label=which_epoch, save_dir=save_dir)
+
+        if isContinue:
+            load_network(discriminator, 'OpticalFlow_D', epoch_label=which_epoch, save_dir=save_dir)
 
     model.cuda()
     discriminator.cuda()
@@ -288,7 +339,7 @@ if __name__ == '__main__':
 
     vid_path = "%s/pred_mask_{0}.mp4" % output_dir
 
-    for epoch in range(0, 100):
+    for epoch in range(ep_start, 100):
 
         if isTrain is True:
             scheduler_G.step()
@@ -297,7 +348,10 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx, video in enumerate(dataset):
+        #for vid_idx, video in enumerate(dataset[vid_start:]):
+        for vid_idx in range(vid_start, dataset_size):
+            # Get video
+            video = dataset[vid_idx]
             iter_start_time = time.time()
             #if total_steps % opt.print_freq == 0:
             #    t_data = iter_start_time - iter_data_time
