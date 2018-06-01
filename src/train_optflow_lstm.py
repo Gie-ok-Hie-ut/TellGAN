@@ -196,7 +196,7 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    face_size=(288, 360) if isMouthOnly is False else (50,100)
+    face_size=(288, 360)
 
     if islocalize:
         face_size = (150,128) if isMouthOnly is False else (50, 100)
