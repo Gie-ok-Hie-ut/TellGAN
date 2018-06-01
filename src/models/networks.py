@@ -100,9 +100,6 @@ def get_scheduler(optimizer, opt):
     return scheduler
 
 
-
-
-
 # Define Network
 def define_ImgEncoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
     netImgEncoder = None
@@ -191,26 +188,6 @@ def define_ConvLSTM(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_i
     return convLSTM
 
 
-def define_WordEmbed(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_ids=[]):
-    netWordEmbed = None
-    use_gpu = len(gpu_ids) > 0
-
-    if use_gpu:
-        assert(torch.cuda.is_available())
-
-    which_model_wordembed = 'OneHotVector'
-
-    if which_model_wordembed == 'OneHotVector':
-        netWordEmbed = WordEmbed()
-    else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
-
-    if len(gpu_ids) > 0:
-        netWordEmbed.cuda(gpu_ids[0])
-
-    init_weights(netWordEmbed, init_type=init_type)
-    
-    return netWordEmbed
 
 
 def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
@@ -252,6 +229,20 @@ def define_D(input_nc, ndf, which_model_netD,n_layers_D=3, norm='batch', use_sig
         netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
     elif which_model_netD == 'pixel':
         netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
+    elif which_model_netD == 'lstm_dis':
+
+        L_in_size = (128,128) # ?
+        L_dim_in = 257
+        L_n_layers = 1
+        L_dim_out = 256
+        L_kernel_size = (3,3)
+        D_ndf = ndf
+        D_n_layers = n_layers_D
+        D_norm_layer = norm_layer
+        D_use_sigmoid = use_sigmoid
+        gpu_ids = gpu_ids
+
+        netD = LSTMDiscriminator(L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, D_ndf=64, D_n_layers=3, D_norm_layer=nn.BatchNorm2d, D_use_sigmoid=False, gpu_ids=[]):
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)
@@ -732,7 +723,19 @@ class UnetSkipConnectionBlock(nn.Module):
             return self.model(x)
         else:
             return torch.cat([x, self.model(x)], 1)
+# Defines the PatchGAN discriminator with the specified arguments.
+class LSTMDiscriminator(nn.Module):
+    def __init__(self,L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, D_ndf=64, D_n_layers=3, D_norm_layer=nn.BatchNorm2d, D_use_sigmoid=False, gpu_ids=[]):
+        super(LSTMDiscriminator, self).__init__()
 
+        self.ConvLSTM = define_ConvLSTM(L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, gpu_ids)
+        self.NLayerDis =  NLayerDiscriminator(L_dim_out, D_ndf, D_n_layers, D_norm_layer=norm_layer, D_use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
+
+    def forward(self, input):
+        x = self.ConvLSTM(input)
+        x = self.NlayerDis(x)
+
+        return x
 
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
