@@ -12,7 +12,7 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models.networks import NextFrameConvLSTM, NLayerDiscriminator
 from util.visualizer import Visualizer
-from data.video.transform.localizeface import LocalizeFace
+from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
 import torch
 import torch.nn as nn
@@ -46,113 +46,6 @@ def is_file(fname):
 
 
 
-class FeaturePredictor(object):
-    def __init__(self, feature_model=None):
-        self.feature_model = feature_model
-        self.face_detector = dlib.get_frontal_face_detector()
-        self.feature_detector = dlib.shape_predictor(self.feature_model)
-
-        # Parameters for lucas kanade optical flow
-        self.lk_params = dict(winSize=(15, 15),
-                         maxLevel=2,
-                         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-    def opticalFlow(self, old, new, features0=None):
-        #mat0 = self.pilToMat(pil0)
-        gray0 = cv2.cvtColor(old, cv2.COLOR_BGR2GRAY)
-        #mat1 = self.pilToMat(pil1)
-        gray1 = cv2.cvtColor(new, cv2.COLOR_BGR2GRAY)
-        features1 = None
-
-        if features0 is None:
-            features0 = self.getFeaturePoints(gray0)
-
-        # May fail to get features, return None and blank mask
-        if features0 is not None:
-            features1, features0 = self.getFlow(gray0, gray1, features0)
-
-        features1 = features1.reshape(-1,1,2) if features1 is not None else None
-
-        mask = self.create_mask(gray1, features1)
-
-        return features1, self.matToPil(mask)
-
-    def getFeatureMask(self, pil0, mouthonly=False):
-        #gray0 = cv2.cvtColor(self.pilToMat(pil0), cv2.COLOR_BGR2GRAY)
-        gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
-        features0 = self.getFeaturePoints(gray0, mouthonly)
-
-        mask = self.create_mask(gray0, features0)
-        return features0, self.matToPil(mask)
-
-
-    def getFlow(self, old_gray, frame_gray, features0):
-        features1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, features0,
-                                                      None, ** self.lk_params)
-        # Select good points
-        good_new = features1[st == 1]
-        good_old = features0[st == 1]
-
-        return good_new, good_old
-
-    def create_mask(self, img, features):
-
-        mask = np.zeros_like(img)
-        if features is None:
-            return mask
-
-        features = np.copy(features).astype(np.int)
-
-        mask[features[:,:,1], features[:,:,0]] = 255
-
-        return mask
-
-
-    def getFeaturePoints(self, img_grey, mouthonly=False):
-        faces = self.face_detector(img_grey, 1)
-        features = None
-
-        for k, rect in enumerate(faces):
-            # print("k: ", k)
-            # print("rect: ", rect)
-            # shape = self.predictor(img_gray, rect)
-            features = self.feature_detector(img_grey, rect)
-            break
-
-        feat_points = np.asfarray([])
-        if features is None:
-            return None
-
-        for i, part in enumerate(features.parts()):
-            fpoint = np.asfarray([part.x, part.y])
-            # filter if index values larger than image
-            if (fpoint < 0).any() or fpoint[0] >= img_grey.shape[1] or fpoint[1] >= img_grey.shape[0]:
-                print("ignoring point: {} | imgsize: {}".format(fpoint,img_grey.shape))
-                continue
-            if i is 0:
-                feat_points = fpoint
-            else:
-                feat_points = np.vstack((feat_points, fpoint))
-
-        if mouthonly is True:
-            # starting at 1, mouth indices are 49-68
-            feat_points = feat_points[48:68]
-
-        feat_points = np.expand_dims(feat_points, axis=1)
-
-
-        # print("face_points_shape: ", feat_points.shape)
-        # print("feat_points: ", feat_points)
-        return feat_points.astype(np.float32)
-
-    def matToPil(self, mat_img):
-        return Image.fromarray(mat_img)
-
-    def pilToMat(self, pil_img):
-        pil_image = pil_img.convert('RGB')
-        open_cv_image = np.array(pil_image)
-        # Convert RGB to BGR
-        return open_cv_image  # [:, :, ::-1].copy()
 
 def create_video(vid_path, vid_idx, save_freq):
     if vid_idx % save_freq != 0:
@@ -240,7 +133,11 @@ def get_arguments():
     parser.add_argument("--test", action="store_false", dest="isTrain", default=True,
                         help="Test model, load checkpoints")
     parser.add_argument("--continue", action="store_true", dest="isContinue", default=False,
-                        help="load checkpoints and start training, see --ep-start and --vid-start")
+                        help="Continue Training, loads model, use with --ep-start and --vid-start")
+    parser.add_argument("--mouth", action="store_true", dest="mouthonly", default=False,
+                        help="use mouth features only")
+    parser.add_argument("--localize", action="store_true", dest="localize", default=False,
+                        help="localize")
     parser.add_argument("--dataroot", action=FullPaths, type=is_dir, dest="dataroot", default="./",
                         help="data dir")
     parser.add_argument("--ckptdir", action=FullPaths, dest="chkptdir", default="./chkpt",
@@ -272,6 +169,8 @@ if __name__ == '__main__':
     ep_start = args.ep_start
     vid_start = args.vid_start
     isSave = args.isSave
+    islocalize = args.localize
+    isMouthOnly = args.mouthonly
 
     #force continue to be false if not training
     isContinue = args.isContinue if isTrain is True else False
@@ -297,12 +196,19 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    face_size=(288, 360)
+    face_size=(288, 360) if isMouthOnly is False else (50,100)
+
+    if islocalize:
+        face_size = (150,128) if isMouthOnly is False else (50, 100)
+
     save_freq=20
 
     face_predictor_path = '/home/jake/classes/cs703/Project/dev/TellGAN/src/assests/predictors/shape_predictor_68_face_landmarks.dat'
 
     toTensor = transforms.ToTensor()
+    localizer = LocalizeFace(height=face_size[0], width=face_size[1],
+                             predictor_path=face_predictor_path, mouthonly=isMouthOnly)
+
     frame_transforms = transforms.Compose([
         #LocalizeFace(height=face_size,width=face_size),
         #toTensor#,
@@ -373,13 +279,15 @@ if __name__ == '__main__':
             init_tensor=True
             prev_img_seq = None
             word_seq = None
-            prev_feat = None
+            prev_mask = None
             prev_frame = None
             vid_loss = []
             #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
             sample_frames = []
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
+                mask = None
+
                 if isTrain is True:
                     optimizer_G.zero_grad()
 
@@ -397,25 +305,28 @@ if __name__ == '__main__':
                 if trans not in word_to_ix:
                     word_to_ix[trans] = len(word_to_ix)
 
-                lookup_tensor = torch.LongTensor([word_to_ix[trans]])
-                trans_embed = embeds(Variable(lookup_tensor))
-                transT = trans_embed.repeat(imgT.size(1),imgT.size(2)).unsqueeze(0)
 
                 #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
-                feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=True)
+                if islocalize:
+                    localized_frame, mask = localizer.localize(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
+                else:
+                    feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
+                    if feat0 is None:
+                        mask = None
 
-                #if feat0 is None and prev_feat is not None:
-                #    feat0, mask = opticalFlow.run(opticalFlow.pilToMat(prev_frame),
-                #                                  opticalFlow.pilToMat(img), prev_feat)
-
-                if feat0 is None:
+                if mask is None:
                     init_tensor=True
                     prev_img_seq=None
                     word_seq=None
                     continue
 
+
                 #OpticalFlow.matToPil(mask).show()
                 maskT = Variable(toTensor(mask))
+
+                lookup_tensor = torch.LongTensor([word_to_ix[trans]])
+                trans_embed = embeds(Variable(lookup_tensor))
+                transT = trans_embed.repeat(maskT.size(1),maskT.size(2)).unsqueeze(0)
 
                 # INitialize the input with ground trouth only
                 if (init_tensor == True):
@@ -473,7 +384,7 @@ if __name__ == '__main__':
 
                 # Setup next iteration
                 prev_frame = img
-                prev_feat = feat0
+                prev_mask = mask
 
             if vid_idx % save_freq == 0:
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
