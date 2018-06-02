@@ -821,14 +821,14 @@ class NextFeaturesForWord(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
-        self.output_seq = [
+        self.input_seq = [
             nn.Linear(hidden_size,hidden_size),
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]
 
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
-        #self.output = nn.Sequential(*self.output_seq)
+        self.in_layer = nn.Sequential(*self.input_seq)
 
         self.hidden = self.init_hidden()
 
@@ -841,7 +841,7 @@ class NextFeaturesForWord(nn.Module):
                 torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
 
     def forward(self, input):
-            pred_seq, self.hidden = self.lstm(input, self.hidden)
+            lstm_in = self.in_layer(input)
+            pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
             out = pred_seq[-1]
-            #out = self.output(pred)
             return out

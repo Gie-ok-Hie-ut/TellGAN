@@ -49,22 +49,22 @@ class LocalizeFace(object):
         if self.predictor_path is None:
             return self.naive_crop(img)
 
-        localized, _ = self.localize(img, self.isMouthOnly)
+        localized, mask, fpoints = self.localize(img, self.isMouthOnly)
         return localized
 
 
     def localize(self, frame, mouthonly=False):
-        normalize_ratio = 1
+        normalize_ratio = None
 
-        fpoints = self.detector.getFeaturePoints(frame, mouthonly)
+        fpoints_of = self.detector.getFeaturePoints(frame, mouthonly)
 
-        if fpoints is None:
+        if fpoints_of is None:
             return frame, None
 
-        fpoints = fpoints.squeeze().astype(np.int)
+        fpoints = fpoints_of.squeeze().astype(np.int)
 
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        mask = self.detector.create_mask(frame_gray, np.expand_dims(fpoints, axis=1))
+        #frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        #mask = self.detector.create_mask(frame_gray, np.expand_dims(fpoints, axis=1))
 
         # Reverse coords, as np coords are in [y,x]
         centroid = np.mean(fpoints[:, -2:], axis=0)
@@ -83,8 +83,9 @@ class LocalizeFace(object):
 
         new_img_shape = (int(frame.shape[0] * normalize_ratio), int(frame.shape[1] * normalize_ratio))
 
+
         resized_img = imresize(frame, new_img_shape)
-        resized_mask = imresize(mask, new_img_shape)
+        #resized_mask = imresize(mask, new_img_shape)
 
         centroid_norm = centroid * normalize_ratio
 
@@ -94,9 +95,16 @@ class LocalizeFace(object):
         object_b = int(centroid_norm[1] + self.height / 2)
 
         localized = resized_img[object_t:object_b, object_l:object_r]
-        localized_mask = resized_mask[object_t:object_b, object_l:object_r]
+        fpoints_norm = (fpoints_of * normalize_ratio).astype(np.int)
+        fpoints_norm[:,:,1] -= object_t
+        fpoints_norm[:,:,0] -= object_l
+        localized_gray = cv2.cvtColor(localized, cv2.COLOR_BGR2GRAY)
+        localized_mask = self.detector.create_mask(localized_gray, fpoints_norm)
 
-        return self.detector.matToPil(localized), self.detector.matToPil(localized_mask)
+        #localized_mask = resized_mask[object_t:object_b, object_l:object_r]
+
+        #return self.detector.matToPil(localized), self.detector.matToPil(localized_mask), fpoints_norm
+        return self.detector.matToPil(localized), self.detector.matToPil(localized_mask), fpoints_norm.astype(np.float32)
 
 
 
