@@ -1,7 +1,7 @@
 from __future__ import print_function
 
-import cv2
 import dlib
+import cv2
 from PIL import Image
 from scipy.misc import imresize
 import numpy as np
@@ -12,7 +12,7 @@ class LocalizeFace(object):
     """
 
 
-    def __init__(self, height=None, width=None, predictor_path=None, mouthonly=False):
+    def __init__(self, height=None, width=None, predictor_path=None, mouthonly=False, padding=0.19):
         """
         For GRID each frame is (288, 360, 3) by default, the height/width options force the bounding boxes
         to be a specific size.
@@ -23,7 +23,7 @@ class LocalizeFace(object):
         self.width = width
         self.isMouthOnly = mouthonly
 
-        self.HORIZONTAL_PAD = 0.19
+        self.HORIZONTAL_PAD = padding
         x1 = self.width if self.width is not None else 0
         y1 = self.height if self.height is not None else 0
 
@@ -79,7 +79,7 @@ class LocalizeFace(object):
                 toppt = np.max(fpoints[:, :1]) * (1.0 + self.HORIZONTAL_PAD)
                 bottompt = np.min(fpoints[:, :1]) * (1.0 - self.HORIZONTAL_PAD)
 
-                normalize_ratio = self.width / float(toppt - bottompt)
+                normalize_ratio = self.height / float(toppt - bottompt)
 
         new_img_shape = (int(frame.shape[0] * normalize_ratio), int(frame.shape[1] * normalize_ratio))
 
@@ -191,6 +191,7 @@ class FeaturePredictor(object):
     def __init__(self, feature_model=None):
         self.feature_model = feature_model
         self.face_detector = dlib.get_frontal_face_detector()
+        print(self.feature_model)
         self.feature_detector = dlib.shape_predictor(self.feature_model)
 
         # Parameters for lucas kanade optical flow
