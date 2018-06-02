@@ -258,7 +258,7 @@ if __name__ == '__main__':
     model.cuda()
 
     opticalFlow = FeaturePredictor(face_predictor_path)
-    crit = distLoss #nn.MSELoss()
+    crit = nn.MSELoss()
     #crit.cuda()
 
     if isTrain is True:
