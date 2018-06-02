@@ -209,7 +209,7 @@ def define_WordEmbed(input_size,input_dim,num_layers,hidden_dim,kernel_size,gpu_
         netWordEmbed.cuda(gpu_ids[0])
 
     init_weights(netWordEmbed, init_type=init_type)
-    
+
     return netWordEmbed
 
 
@@ -408,7 +408,7 @@ class ResnetGenerator_Decoder(nn.Module):
                       nn.ReLU(True)]
         model += [nn.ReflectionPad2d(3)]
         model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)] #Why not ConvTranspose2d?
-        
+
         #Delete this line for Affine Transformation
         #model += [nn.Tanh()]
 
@@ -519,13 +519,13 @@ class ResnetBlock(nn.Module):
         out = x + self.conv_block(x)
         return out
 
-# Based on this code 
+# Based on this code
 # https://github.com/milesial/Pytorch-UNet/blob/master/unet
 
 class WordUnetGenerator(nn.Module):
     def __init__(self,dim_in,dim_out):
         super(WordUnetGenerator,self).__init__()
-        
+
         self.same1 = conv_same(dim_in, 16) #3/256/256 -> 16/256/256
         self.down1 = conv_down(16, 32)
         self.down2 = conv_down(32, 64)
@@ -653,7 +653,7 @@ class UNet(nn.Module):
 # Defines the Unet generator.
 # |num_downs|: number of downsamplings in UNet. For example,
 # if |num_downs| == 7, image of size 128x128 will become of size 1x1
-# at the bottleneck    
+# at the bottleneck
 class UnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64,
                  norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[]):
@@ -813,3 +813,35 @@ class PixelDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
         else:
             return self.net(input)
+
+class NextFeaturesForWord(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers=2):
+        super(NextFeaturesForWord, self).__init__()
+
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.output_seq = [
+            nn.Linear(hidden_size,hidden_size),
+            #nn.ReLU(True),
+            #nn.Sigmoid()
+        ]
+
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
+        #self.output = nn.Sequential(*self.output_seq)
+
+        self.hidden = self.init_hidden()
+
+    def init_hidden(self):
+        # Before we've done anything, we dont have any hidden state.
+        # Refer to the Pytorch documentation to see exactly
+        # why they have this dimensionality.
+        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
+        return (torch.zeros(self.num_layers, 1, self.hidden_size).cuda(),
+                torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
+
+    def forward(self, input):
+            pred_seq, self.hidden = self.lstm(input, self.hidden)
+            out = pred_seq[-1]
+            #out = self.output(pred)
+            return out
