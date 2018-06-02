@@ -10,7 +10,7 @@ import os
 import itertools
 from options.train_options import TrainOptions
 from data import CreateDataLoader
-from models.networks import NextFrameConvLSTM, NLayerDiscriminator #, NextFeaturesForWord
+from models.networks import NextFrameConvLSTM, NLayerDiscriminator, NextFeaturesForWord
 from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
@@ -243,13 +243,13 @@ if __name__ == '__main__':
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
-    word_dim = 1
+    word_dim = nFeaturePoints*2
     embeds = nn.Embedding(100, word_dim)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
     hidden_layers=2
-    model = nn.LSTM(input_size=(nFeaturePoints*2)+word_dim, hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
+    model = NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
 
-    hidden_state = init_hidden(hidden_layers,nFeaturePoints*2)
+    hidden_state = model.init_hidden()
 
     if isTrain is False or isContinue is True:
         which_epoch = 'latest'
@@ -259,7 +259,7 @@ if __name__ == '__main__':
 
     opticalFlow = FeaturePredictor(face_predictor_path)
     crit = nn.MSELoss()
-    #crit.cuda()
+    crit.cuda()
 
     if isTrain is True:
         optimizer_G = optim.Adam(itertools.chain(model.parameters()))
@@ -292,13 +292,14 @@ if __name__ == '__main__':
 
             init_tensor=True
             prev_feat_seq = None
-            word_seq = None
+            #word_seq = None
             prev_mask = None
             prev_frame = None
             vid_loss = []
             #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
             sample_frames = []
             # frame is a tuple (frame_img, frame_word)
+            last_word = None
             for frame_idx, frame in enumerate(video):
                 mask = None
 
@@ -308,27 +309,38 @@ if __name__ == '__main__':
                 (img, trans) = frame
                 imgT = toTensor(img)
 
+
                 #if imgT.size(1) is not face_size[0] or imgT.size(2) is not face_size[1] or trans is None:
                 if trans is None:
                     print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, imgT.size(), trans))
                     prev_feat_seq=None
-                    word_seq=None
+                    #word_seq=None
                     init_tensor=True
+                    last_word = None
                     continue
 
                 if trans not in word_to_ix:
                     word_to_ix[trans] = len(word_to_ix)
 
+                if last_word is None:
+                    last_word = trans
 
                 #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
-                feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
+                feat0 = None
+                if islocalize:
+                    frame, mask, feat0 = localizer.localize(opticalFlow.pilToMat(img),mouthonly=isMouthOnly)
+                    #mask.show()
+                    #frame.show()
+                else:
+                    feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
 
                 if feat0 is None or nFeaturePoints > feat0.shape[0]:
                     shape = None if feat0 is None else feat0.shape
                     print("Initializing State: {}".format(shape))
                     init_tensor=True
                     prev_feat_seq=None
-                    word_seq=None
+                    last_word=None
+                    #word_seq=None
                     continue
 
                 #normalize
@@ -342,39 +354,55 @@ if __name__ == '__main__':
                 #featT2D[:,:,1] *= face_size[0]
                 #featT2D[:,:,0] *= face_size[1]
                 #OpticalFlow.matToPil(mask).show()
-                maskT = Variable(toTensor(mask))
+                #maskT = Variable(toTensor(mask))
 
                 lookup_tensor = torch.LongTensor([word_to_ix[trans]])
                 transT= embeds(Variable(lookup_tensor))
 
-                # INitialize the input with ground trouth only
-                if (init_tensor == True):
-                    hidden_state = init_hidden(hidden_layers, nFeaturePoints * 2)
-                    prev_feat_seq = featT.unsqueeze(0)
+                # INitialize the input with ground truth only
+                if init_tensor == True or last_word is not trans:
+                    #hidden_state = model.init_hidden()
+                    prev_feat_seq = torch.cat((transT, featT.unsqueeze(0)),0)
+                    print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
+                          .format(init_tensor, last_word, trans, prev_feat_seq.size()))
                     init_tensor = False
+                    last_word = trans
                     if vid_idx % save_freq == 0:
                         sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
                     continue
 
-                if word_seq is not None:
-                    word_seq = torch.cat((word_seq, transT), 0)
-                else:
-                    word_seq = transT
+                #if word_seq is not None:
+                #    word_seq = torch.cat((word_seq, transT), 0)
+                #else:
+                #    word_seq = transT
 
                 #Concat previous image and current word, add batch dim
-                input = torch.cat((prev_feat_seq, word_seq), 1).unsqueeze(1).cuda()
+                #input = torch.cat((prev_feat_seq, word_seq), 1).unsqueeze(1).cuda()
+                input = prev_feat_seq.unsqueeze(1).cuda()
 
-                pred_featT_seq, hidden_state = model(input.detach(), hidden_state)
+                #hidden_state = model.init_hidden()
+                #pred_featT, hidden_state = model(input.detach()), hidden_state)
+                pred_featT = model(input.detach())
 
                 #Get last value in sequence
-                pred_featT = pred_featT_seq[-1]
+                #pred_featT = pred_featT_seq[-1]
+
+
+                # Train Generator (LSTM)
+                loss = crit(pred_featT, featT.unsqueeze(0).cuda())
+                vid_loss.append(loss.clone().data.cpu().numpy())
+
+                if isTrain:
+                    loss.backward()#retain_graph=True)
+                    optimizer_G.step()
+
 
                 if vid_idx % save_freq == 0:
-                    pred_featT2d = torch.sigmoid(pred_featT.clone()).view(nFeaturePoints,1,2)
+                    pred_featT2d = pred_featT.clone().view(nFeaturePoints,1,2)
                     #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
                     # denormalize
-                    pred_featT2d[:,:,1] *= face_size[0]
-                    pred_featT2d[:,:,0] *= face_size[1]
+                    pred_featT2d[:,:,1] *= (face_size[0])
+                    pred_featT2d[:,:,0] *= (face_size[1])
                     pred_feat = pred_featT2d.data.cpu().numpy()
                     pred_mask = opticalFlow.create_mask(mask, pred_feat)
                     pil_pred_mask = opticalFlow.matToPil(pred_mask)
@@ -385,21 +413,17 @@ if __name__ == '__main__':
                     prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
                 else:
                     prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
-
-                # Train Generator (LSTM)
-                loss = crit(pred_featT, featT.unsqueeze(0).cuda())
-                vid_loss.append(loss.data.cpu().numpy())
-
                 #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
 
-                if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%25 == 0):
-                    init_tensor=True
-                    prev_feat_seq=None
-                    word_seq=None
+                #if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%25 == 0):
+                #    init_tensor=True
+                #    prev_feat_seq=None
+                    #word_seq=None
 
                 # Setup next iteration
-                prev_frame = img
-                prev_mask = mask
+                #prev_frame = img
+                last_word = trans
+                #prev_mask = mask
 
             if vid_idx % save_freq == 0:
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
