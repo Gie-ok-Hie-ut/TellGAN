@@ -10,7 +10,7 @@ import os
 import itertools
 from options.train_options import TrainOptions
 from data import CreateDataLoader
-from models.networks import NextFrameConvLSTM, NLayerDiscriminator
+from models.networks import NextFrameConvLSTM, NLayerDiscriminator #, NextFeaturesForWord
 from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
@@ -165,6 +165,19 @@ def init_hidden(layers, hidden_dim):
     return (torch.zeros(layers, 1, hidden_dim).cuda(),
             torch.zeros(layers, 1, hidden_dim).cuda())
 
+def distLoss(fake, gt):
+    loss = torch.sum(fake - gt)
+    return loss
+
+
+
+# Normalize and de-normalize
+def normalize(data_points, img_size, scale_down=True):
+    if(scale_down==True):
+        data_points[:,0] = [[float(data[0])/img_size[1], float(data[1])/faceimg_size_size[0]] for data in data_points[:,0]]
+    else:
+        data_points[:] = [[int(data[0])*img_size[1], int(data[1])*img_size[0]] for data in data_points[:,0]]
+
 if __name__ == '__main__':
 
     args = get_arguments()
@@ -238,18 +251,15 @@ if __name__ == '__main__':
 
     hidden_state = init_hidden(hidden_layers,nFeaturePoints*2)
 
-    discriminator = NLayerDiscriminator(input_nc=1)#, use_sigmoid=True)
-
     if isTrain is False or isContinue is True:
         which_epoch = 'latest'
         load_network(model, 'FeaturePointLSTM', epoch_label=which_epoch, save_dir=save_dir)
 
     model.cuda()
-    discriminator.cuda()
 
     opticalFlow = FeaturePredictor(face_predictor_path)
-    crit = nn.MSELoss()
-    crit.cuda()
+    crit = distLoss #nn.MSELoss()
+    #crit.cuda()
 
     if isTrain is True:
         optimizer_G = optim.Adam(itertools.chain(model.parameters()))
@@ -314,15 +324,23 @@ if __name__ == '__main__':
                 feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
 
                 if feat0 is None or nFeaturePoints > feat0.shape[0]:
-                    print("Initializing State: {}".format(feat0.shape))
+                    shape = None if feat0 is None else feat0.shape
+                    print("Initializing State: {}".format(shape))
                     init_tensor=True
                     prev_feat_seq=None
                     word_seq=None
                     continue
 
-                featTB4 = Variable(torch.from_numpy(feat0))
+                #normalize
+                feat0_norm = feat0.copy()
+                feat0_norm[:,:,1] /= face_size[0]
+                feat0_norm[:,:,0] /= face_size[1]
+
+                featTB4 = Variable(torch.from_numpy(feat0_norm))
                 featT = featTB4.view(featTB4.numel())
-                featT2D = featT.view(nFeaturePoints, 1, 2)
+                #featT2D = featT.clone().view(nFeaturePoints, 1, 2)
+                #featT2D[:,:,1] *= face_size[0]
+                #featT2D[:,:,0] *= face_size[1]
                 #OpticalFlow.matToPil(mask).show()
                 maskT = Variable(toTensor(mask))
 
@@ -352,7 +370,11 @@ if __name__ == '__main__':
                 pred_featT = pred_featT_seq[-1]
 
                 if vid_idx % save_freq == 0:
-                    pred_featT2d = pred_featT.view(nFeaturePoints,1,2)
+                    pred_featT2d = torch.sigmoid(pred_featT.clone()).view(nFeaturePoints,1,2)
+                    #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
+                    # denormalize
+                    pred_featT2d[:,:,1] *= face_size[0]
+                    pred_featT2d[:,:,0] *= face_size[1]
                     pred_feat = pred_featT2d.data.cpu().numpy()
                     pred_mask = opticalFlow.create_mask(mask, pred_feat)
                     pil_pred_mask = opticalFlow.matToPil(pred_mask)
@@ -362,7 +384,7 @@ if __name__ == '__main__':
                 if isTrain:
                     prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
                 else:
-                    prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.unsqueeze(0).cpu()), 0)
+                    prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
 
                 # Train Generator (LSTM)
                 loss = crit(pred_featT, featT.unsqueeze(0).cuda())
