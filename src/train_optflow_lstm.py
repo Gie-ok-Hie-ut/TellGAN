@@ -362,8 +362,8 @@ if __name__ == '__main__':
                 if init_tensor == True or last_word is not trans:
                     #hidden_state = model.init_hidden()
                     prev_feat_seq = torch.cat((transT, featT.unsqueeze(0)),0)
-                    print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
-                          .format(init_tensor, last_word, trans, prev_feat_seq.size()))
+                    #print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
+                    #      .format(init_tensor, last_word, trans, prev_feat_seq.size()))
                     init_tensor = False
                     last_word = trans
                     if vid_idx % save_freq == 0:
@@ -436,8 +436,10 @@ if __name__ == '__main__':
                     save_network(model, 'FeaturePointLSTM',
                                  epoch_label="ep{0}_{1}".format(epoch,vid_idx),
                                  save_dir=save_dir)
+            avg_loss = 0
+            if len(vid_loss) > 1:
+                avg_loss = sum(vid_loss) / len(vid_loss)
 
-            avg_loss = sum(vid_loss) / len(vid_loss)
             print("ep: {0}, video: {1}, Loss: {2}".format(epoch, vid_idx, avg_loss))
             print("===========================")
 
