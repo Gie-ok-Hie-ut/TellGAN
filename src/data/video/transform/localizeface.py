@@ -59,7 +59,7 @@ class LocalizeFace(object):
         fpoints_of = self.detector.getFeaturePoints(frame, mouthonly)
 
         if fpoints_of is None:
-            return frame, None
+            return frame, None, None
 
         fpoints = fpoints_of.squeeze().astype(np.int)
 
