@@ -246,7 +246,7 @@ if __name__ == '__main__':
     word_dim = nFeaturePoints*2
     embeds = nn.Embedding(100, word_dim)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
-    hidden_layers=2
+    hidden_layers=3
     model = NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
 
     hidden_state = model.init_hidden()
