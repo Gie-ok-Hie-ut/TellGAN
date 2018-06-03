@@ -144,7 +144,7 @@ def get_arguments():
                         help="directory for loading/saving checkpoints")
     parser.add_argument("--outdir", action=FullPaths, dest="outdir", default="./out",
                         help="directory for ouput of videos and images from testing/training")
-    parser.add_argument("--features-model", action=FullPaths, type=is_file, dest="face_predictor_path",
+    parser.add_argument("--features-model",  dest="face_predictor_path",
                         default="./shape_predictor_68_face_landmarks.dat",
                         help="directory for loading/saving checkpoints")
     parser.add_argument("--ep-start", type=int, dest="ep_start",
@@ -227,7 +227,6 @@ if __name__ == '__main__':
     # number of xy feature points (xyxyxyxyxyxyxy...)
     nFeaturePoints = 68 if isMouthOnly is False else 20
 
-    face_predictor_path = '/home/jake/classes/cs703/Project/dev/TellGAN/src/assests/predictors/shape_predictor_68_face_landmarks.dat'
 
     toTensor = transforms.ToTensor()
     localizer = LocalizeFace(height=face_size[0], width=face_size[1],

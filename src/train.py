@@ -9,6 +9,7 @@ from torchvision import transforms
 import numpy as np
 
 
+
 if __name__ == '__main__':
     opt = TrainOptions().parse()
 
@@ -16,11 +17,19 @@ if __name__ == '__main__':
     #normStd = [0.24703233, 0.24348505, 0.26158768]
     #normTransform = transforms.Normalize(normMean, normStd)
     face_size=128
+    toTensor=transforms.ToTensor()
+    face_predictor_path = './shape_predictor_68_face_landmarks.dat'
+    localizer = LocalizeFace(height=face_size, width=face_size, predictor_path=face_predictor_path, mouthonly=True, padding = 1)
     frame_transforms = transforms.Compose([
-        LocalizeFace(height=face_size,width=face_size),
+    	localizer,
+        #LocalizeFace(height=face_size,width=face_size),
         transforms.ToTensor()#,
         #normTransform
     ])
+
+
+
+    opticalFlow = FeaturePredictor(face_predictor_path)
 
     dataset = GRID(opt.dataroot, transform=frame_transforms)
     dataset_size = len(dataset)
@@ -48,10 +57,41 @@ if __name__ == '__main__':
             epoch_iter += opt.batchSize
 
             init_tensor=True
+
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
 
                 (img, trans) = frame
+
+                img.save('./first.jpg')
+
+
+                ############ Landmark ###############
+                feat0, mask = opticalFlow.getFeatureMask(img.data.cpu().numpy(), mouthonly=isMouthOnly)
+
+                if feat0 is None or nFeaturePoints > feat0.shape[0]:
+                    shape = None if feat0 is None else feat0.shape
+                    print("Initializing State: {}".format(shape))
+                    init_tensor=True
+                    prev_feat_seq=None
+                    word_seq=None
+                    continue
+
+                #normalize
+                feat0_norm = feat0.copy()
+                feat0_norm[:,:,1] /= face_size[0]
+                feat0_norm[:,:,0] /= face_size[1]
+
+                featTB4 = Variable(torch.from_numpy(feat0_norm))
+                featT = featTB4.view(featTB4.numel())
+
+
+
+
+				#######################################
+
+
+
 
                 # Exception - frame size
                 if img.size(1) is not face_size or img.size(2) is not face_size or trans is None:
