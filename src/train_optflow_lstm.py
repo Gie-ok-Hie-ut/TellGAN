@@ -153,8 +153,12 @@ def get_arguments():
     parser.add_argument("--vid-start", type=int, dest="vid_start",
                         default=0,
                         help="video for when to continue training")
+    parser.add_argument("--save-freq", type=int, dest="saveFreq", default=500,
+                        help="Frequency to save backup ceckpoints, latest points saved every 20, for training")
+    parser.add_argument("--vid-freq", type=int, dest="vidFreq", default=20,
+                        help="Frequency to save videos, for testing")
     parser.add_argument("--nosave", action="store_false", dest="isSave", default=True,
-                        help="Do not save ceckpoints, for testing")
+                        help="Do not save ceckpoints, for debug")
     return parser.parse_args()
 
 def init_hidden(layers, hidden_dim):
@@ -192,6 +196,8 @@ if __name__ == '__main__':
     isSave = args.isSave
     islocalize = args.localize
     isMouthOnly = args.mouthonly
+    save_freq = args.saveFreq
+    vid_save_freq = args.vidFreq
 
     #force continue to be false if not training
     isContinue = args.isContinue if isTrain is True else False
@@ -220,7 +226,7 @@ if __name__ == '__main__':
     face_size=(288, 360)
 
     if islocalize:
-        face_size = (150,128) if isMouthOnly is False else (50, 100)
+        face_size = (128,128) if isMouthOnly is False else (50, 100)
 
     save_freq=20
 
@@ -366,7 +372,7 @@ if __name__ == '__main__':
                     #      .format(init_tensor, last_word, trans, prev_feat_seq.size()))
                     init_tensor = False
                     last_word = trans
-                    if vid_idx % save_freq == 0:
+                    if vid_idx % vid_save_freq == 0:
                         sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
                     continue
 
@@ -396,7 +402,7 @@ if __name__ == '__main__':
                     optimizer_G.step()
 
 
-                if vid_idx % save_freq == 0:
+                if vid_idx % vid_save_freq == 0:
                     pred_featT2d = pred_featT.clone().view(nFeaturePoints,1,2)
                     #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
                     # denormalize
@@ -424,7 +430,7 @@ if __name__ == '__main__':
                 last_word = trans
                 #prev_mask = mask
 
-            if vid_idx % save_freq == 0:
+            if vid_idx % vid_save_freq == 0:
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
                 skvideo.io.vwrite(vid_path.format(vid_idx), outputdata)
 
@@ -432,7 +438,7 @@ if __name__ == '__main__':
                 if vid_idx % 20 == 0:
                     save_network(model, 'FeaturePointLSTM', epoch_label='latest', save_dir=save_dir)
 
-                if vid_idx % 100 == 0:
+                if vid_idx % save_freq == 0:
                     save_network(model, 'FeaturePointLSTM',
                                  epoch_label="ep{0}_{1}".format(epoch,vid_idx),
                                  save_dir=save_dir)
