@@ -536,7 +536,7 @@ class WordUnetGenerator(nn.Module):
         self.up3 = conv_up(32,16,3,32)
         self.same2 = conv_same(32, dim_out)
 
-        self.pool = pool_layer()
+        self.pool = self.pool_layer()
 
     def pool_layer(self):
         layer = [nn.MaxPool2d(2,stride=2)]
@@ -597,8 +597,8 @@ class conv_down(nn.Module): # size be half
     def __init__(self, in_ch, out_ch):
         super(conv_down, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3,stride=2, padding=1, bias=use_bias),
-            norm_layer(out_ch),
+            nn.Conv2d(in_ch, out_ch, kernel_size=3,stride=2, padding=1),
+            #norm_layer(out_ch),
             nn.ReLU(True),
             conv_double(out_ch, out_ch)
         )
