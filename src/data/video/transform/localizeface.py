@@ -5,6 +5,7 @@ import cv2
 from PIL import Image
 from scipy.misc import imresize
 import numpy as np
+import os.path
 
 class LocalizeFace(object):
     """
@@ -17,6 +18,12 @@ class LocalizeFace(object):
         For GRID each frame is (288, 360, 3) by default, the height/width options force the bounding boxes
         to be a specific size.
         """
+        print(predictor_path)
+        print(os.path.isfile('train.py'))
+        print(os.path.isfile('train_tellgan.sh'))
+        print(os.path.isfile('shape.dat'))
+        print(os.path.isfile('shape_predictor_68_face_landmarks.dat'))
+        predictor_path = 'shape_predictor_68_face_landmarks.dat'
         self.detector = FeaturePredictor(predictor_path)
         self.predictor_path = predictor_path
         self.height = height
@@ -56,7 +63,10 @@ class LocalizeFace(object):
     def localize(self, frame, mouthonly=False):
         normalize_ratio = None
 
+
+
         fpoints_of = self.detector.getFeaturePoints(frame, mouthonly)
+
 
         if fpoints_of is None:
             return frame, None, None
@@ -199,8 +209,10 @@ class FeaturePredictor(object):
     def __init__(self, feature_model=None):
         self.feature_model = feature_model
         self.face_detector = dlib.get_frontal_face_detector()
+        print("HELLO")
         print(self.feature_model)
-        self.feature_detector = dlib.shape_predictor(self.feature_model)
+
+        self.feature_detector = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
         # Parameters for lucas kanade optical flow
         self.lk_params = dict(winSize=(15, 15),

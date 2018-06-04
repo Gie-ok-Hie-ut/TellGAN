@@ -3,7 +3,7 @@ from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
 from util.visualizer import Visualizer
-from data.video.transform.localizeface import LocalizeFace
+from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
 from torchvision import transforms
 import numpy as np
