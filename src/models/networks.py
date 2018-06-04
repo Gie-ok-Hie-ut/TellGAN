@@ -242,13 +242,15 @@ def define_D(input_nc, ndf, which_model_netD,n_layers_D=3, norm='batch', use_sig
         D_use_sigmoid = use_sigmoid
         gpu_ids = gpu_ids
 
-        netD = LSTMDiscriminator(L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, D_ndf=64, D_n_layers=3, D_norm_layer=nn.BatchNorm2d, D_use_sigmoid=False, gpu_ids=[]):
+        netD = LSTMDiscriminator(L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, D_ndf=64, D_n_layers=3, D_norm_layer=nn.BatchNorm2d, D_use_sigmoid=False, gpu_ids=[])
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)
     if use_gpu:
         netD.cuda(gpu_ids[0])
-    init_weights(netD, init_type=init_type)
+
+    if not which_model_netD == 'lstm_dis': # I'm not sure
+        init_weights(netD, init_type=init_type)
     return netD
 
 
@@ -729,7 +731,7 @@ class LSTMDiscriminator(nn.Module):
         super(LSTMDiscriminator, self).__init__()
 
         self.ConvLSTM = define_ConvLSTM(L_in_size, L_dim_in, L_n_layers, L_dim_out, L_kernel_size, gpu_ids)
-        self.NLayerDis =  NLayerDiscriminator(L_dim_out, D_ndf, D_n_layers, D_norm_layer=norm_layer, D_use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
+        self.NLayerDis =  NLayerDiscriminator(L_dim_out, D_ndf, D_n_layers, D_norm_layer, D_use_sigmoid, gpu_ids)
 
     def forward(self, input):
         x = self.ConvLSTM(input)
