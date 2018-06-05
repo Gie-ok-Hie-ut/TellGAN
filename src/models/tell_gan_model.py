@@ -1,6 +1,7 @@
 import torch
 from collections import OrderedDict
 from torch.autograd import Variable
+from torchvision import transforms
 import itertools
 import util.util as util
 from util.image_pool import ImagePool
@@ -13,33 +14,39 @@ class TellGANModel(BaseModel):
     def name(self):
         return 'TellGANModel'
 
-    def initialize(self, opt):
+    def initialize(self, opt, landmarkSuite=None):
 
         BaseModel.initialize(self, opt)
 
+        #utilities
+        self.landmarkSuite = landmarkSuite
+        self.toTensor = transforms.ToTensor()
+
         ###### Basic Parameters ######
-        self.feature_size = 32
+        self.feature_size = 20
         self.lstm_in_dim = (self.feature_size, self.feature_size)
         self.lstm_in_nc = 257
         #self.lstm_out_nc = [257, 256]
         #self.lstm_nlayers = 2
         self.lstm_out_nc = [256]
-        self.lstm_nlayers = 1 # too shallow?
+        self.lstm_nlayers = 3 # too shallow?
         self.lstm_kernel_size = (3, 3)
-
-        nFeaturePoints = 68
         hidden_layers=3
 
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'WordUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netPredictor = networks.NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
+        self.netPredictor = networks.NextFeaturesForWord(input_size=(self.feature_size*2),
+                                                         hidden_size=self.feature_size*2,
+                                                         num_layers=self.lstm_nlayers)
         #self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         #self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
         #self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        
+
+        self.netPredictor.cuda()#self.gpu_ids)
+        self.netG.cuda()
 
         # Load Dictionary
-        self.dic_size = 20
+        self.dic_size = 30
         try:
             self.dictionary = np.load('grid_embedding.npy').item()
             print "[Dictionary] Loading Existing Embedding Dictionary"
@@ -53,9 +60,11 @@ class TellGANModel(BaseModel):
 
 
             #self.netD_lstm = networks.define_D(opt.output_nc, opt.ndf, 'lstm_dis', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
-            self.netD_lstm = networks.SimpleLSTMDiscriminator(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
-            self.netD_pair = networks.define_D(opt.output_nc, opt.ndf, 'basic', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
+            self.netD_lstm = networks.SimpleLSTMDiscriminator(input_size=(self.feature_size*2), hidden_size=self.feature_size*2, num_layers=hidden_layers)
+            self.netD_pair = networks.define_D(4, opt.ndf, 'basic', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
 
+            self.netD_lstm.cuda()
+            self.netD_pair.cuda()
             #self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.which_model_netD, opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
 
             # 256 + 256 + 1 = 513 channels on input
@@ -79,7 +88,9 @@ class TellGANModel(BaseModel):
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
+            self.criterionGAN.cuda()
             self.criterionIdt = torch.nn.MSELoss()  # L1 Loss Okay?
+            self.criterionGAN.cuda()
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(
@@ -123,15 +134,32 @@ class TellGANModel(BaseModel):
         self.input_transcription = input_transcription
         self.input_landmark = input_landmark
 
+    def landmarksToTensor(self, landmarks, size=(256,256)):
+        #Flatten and normilize landmarks
+        feat0_norm = landmarks.copy()
+        feat0_norm[:, :, 1] /= size[0]
+        feat0_norm[:, :, 0] /= size[1]
+
+        # Flatten 2D (x,y) coords to 1-D [xyxyxy]
+        featTB4 = Variable(torch.from_numpy(feat0_norm))
+        featT = featTB4.view(featTB4.numel())
+
+        return featT
+
     def forward(self):
+        #nLmks =  self.input_landmark.shape[0]
         self.img_input = Variable(self.input_frame)
 
-        self.word_tensor = self.Word2Tensor(self.input_transcription)
+        self.word_tensor = self.Word2Tensor(self.input_transcription, self.feature_size*2)
         self.word_input = Variable(self.word_tensor)
 
-        self.lnmk_input = Variable(self.input_landmark)
+        # format landmarks
+        featT = self.landmarksToTensor(landmarks=self.input_landmark,
+                                            size=(self.input_frame.size(1), self.input_frame.size(2)))
 
-    def Word2Tensor(self, word):
+        self.lnmk_input = featT
+
+    def Word2Tensor(self, word, dim=1):
         word_cur = word
 
         # Update unseen word
@@ -139,8 +167,8 @@ class TellGANModel(BaseModel):
             self.dictionary.update({word_cur: float((len(self.dictionary) + 1)) / self.dic_size})
 
         # Make Tensor
-        vec2np = np.full((1, 1), self.dictionary[word_cur])
-        np2tensor = torch.from_numpy(vec2np).cuda().float()
+        vec2np = np.full((1, dim), self.dictionary[word_cur])
+        np2tensor = torch.from_numpy(vec2np).float()
 
         return np2tensor
 
@@ -160,7 +188,7 @@ class TellGANModel(BaseModel):
         with torch.no_grad():
             self.img_input = Variable(self.input_frame, volatile=True)
 
-            self.word_tensor = self.Word2Tensor(self.input_transcription)
+            self.word_tensor = self.Word2Tensor(self.input_transcription, dim=self.feature_size*2)
             self.word_input = Variable(self.word_tensor, volatile=True)
 
             if init_tensor == True:
@@ -171,17 +199,19 @@ class TellGANModel(BaseModel):
                 self.img_init = self.img_input
                 self.img_cur = self.img_input
                 self.word_init = self.word_input
+                self.lnmk_cur = self.lnmk_input
 
-                self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
-                self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
+                if self.lstm_stack is not None and (self.lstm_stack[0] - self.word_init != 0):
+                    self.lstm_stack = torch.cat((self.word_init, self.lstm_stack[-1].unsqueeze(0)), 0)
+                else:
+                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
-                self.word_flag = True
+
+
+
                 self.img_enc_stack = self.img_cur_enc
                 self.word_stack = 0  # Is it okay to use?
 
-                # Refresh All saved data
-                self.convlstm_input = 0
-                self.convlstm_output = 0
 
                 # Redundant
                 self.img_predict = self.img_input.unsqueeze(0)
@@ -269,18 +299,18 @@ class TellGANModel(BaseModel):
 
 
     def backward_D_lnmk(self):
-        real = self.dis_lnmk_real
-        fake = self.dis_lnmk_fake
+        real = self.dis_lnmk_real.cuda()
+        fake = self.dis_lnmk_fake.cuda()
 
-        loss_D_word = self.backward_D_basic(self.netD_lstm, real, fake)
-        self.loss_D_word = loss_D_word.data[0]
+        loss_D_lnmk = self.backward_D_basic(self.netD_lstm, real, fake)
+        self.loss_D_lnmk = loss_D_lnmk.data[0]
 
     def backward_D_pair(self):
-        real = self.dis_pair_real 
-        fake = self.dis_pair_fake
+        real = self.dis_pair_real.cuda()
+        fake = self.dis_pair_fake.cuda()
 
-        loss_D_img = self.backward_D_basic(self.netD_pair, real, fake)
-        self.loss_D_img = loss_D_img.data[0]
+        loss_D_pair = self.backward_D_basic(self.netD_pair, real, fake)
+        self.loss_D_pair = loss_D_pair.data[0]
 
 
     def backward_G_init(self):
@@ -289,16 +319,13 @@ class TellGANModel(BaseModel):
         self.lnmk_init = self.lnmk_input
 
         #self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
-        self.lnmk_cur_enc = self.netImgEncoder(self.lnmk_init.unsqueeze(0))
-        self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
+        self.lnmk_cur = self.lnmk_init
+        self.word_cur = self.word_init
+
+        self.lstm_stack = torch.cat((self.word_cur, self.lnmk_cur.unsqueeze(0)),0)
 
         self.word_flag = True
-        self.img_enc_stack = self.img_cur_enc
         self.word_stack = 0  # Is it okay to use?
-
-        # Refresh All saved data
-        self.convlstm_input = 0
-        self.convlstm_output = 0
 
         # Save (Just for the exception case)
         self.img_init_save = self.img_init.data
@@ -311,17 +338,21 @@ class TellGANModel(BaseModel):
         self.loss_img_idt = 0
         self.loss_lnmk_idt = 0
 
-    def LandmrkToImg(self, lnmk):
-        pred_featT2d = pred_featT.clone().view(nFeaturePoints,1,2)
-        #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
+    def landmarkToImg(self, lnmk, size=(128,128)):
+        if lnmk.size(-1) < 40:
+            print lnmk.size
+        lmkT2d = lnmk.clone().view(self.feature_size,1,2)
+
         # denormalize
-        pred_featT2d[:,:,1] *= (face_size[0])
-        pred_featT2d[:,:,0] *= (face_size[1])
-        pred_feat = pred_featT2d.data.cpu().numpy()
-        pred_mask = opticalFlow.create_mask(mask, pred_feat)
-        pil_pred_mask = opticalFlow.matToPil(pred_mask)
-        sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))      
-        return lnmk_img
+        lmkT2d[:,:,1] *= size[0]
+        lmkT2d[:,:,0] *= size[1]
+        np_lmk = lmkT2d.data.cpu().numpy()
+        lnmk_img = self.landmarkSuite.create_mask(size, np_lmk)
+        pil_lnmk_img = self.landmarkSuite.matToPil(lnmk_img)
+
+        pil_lnmk_imgT = self.toTensor(pil_lnmk_img)
+
+        return pil_lnmk_imgT, pil_lnmk_img
 
 
     def backward_G(self):
@@ -330,39 +361,36 @@ class TellGANModel(BaseModel):
         self.word_cur = self.word_input
         self.lnmk_cur = self.lnmk_input
 
-        # Stack Before
-        if self.word_flag == True:
-            self.lstm_stack = torch.cat((self.word_cur, self.lnmk_cur.unsqueeze(0)),0)
-            self.word_flag = False
-
         # Prediction
-        self.lnmk_predict = self.netPredictor(self.lstm_stack)
+        lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+        self.lnmk_predict = self.netPredictor(lstm_input.detach())
 
         # Final
-        self.lnmk_cur_img = LandmarkToImg(self.lnmk_cur)
-        self.lnmk_predict_img = LandmarkToImg(self.lnmk_predict)
-        self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_cur_img.unsqueeze(0)) # Train focus on Face Generator
+        self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_cur.size(1), self.img_cur.size(2)))
+        self.lnmk_predict_imgT, self.lnmk_predict_img = self.landmarkToImg(self.lnmk_predict, size=(self.img_cur.size(1), self.img_cur.size(2)))
+        self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
         #self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
 
         # Stack After
-        self.lstm_stack = torch.cat((self.lstm_stack), lnmk_cur.squeeze(0), 0)
-        self.lstm_stack2 = torch.cat((self.lstm_stack), lnmk_predict.squeeze(0),0)
+        self.lstm_stack2 = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()),0)
+        self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_cur.unsqueeze(0)), 0)
+
 
 
 
 
         # For Discriminator
         # 1. Discriminator_lnmk - fake landmark added
-        self.dis_lnmk_real = self.lstm_stack
-        self.dis_lnmk_fake = self.lstm_stack2
+        self.dis_lnmk_real = self.lstm_stack.unsqueeze(1)
+        self.dis_lnmk_fake = self.lstm_stack2.unsqueeze(1)
 
         # 2. Discriminator_word - fake word added
         #self.dis_word_real = torch.cat((self.lnmk_stack, self.word_stack2_fake), 1) # Should be changed
         #self.dis_word_fake = torch.cat((self.lnmk_stack, self.word_stack), 1)
 
         # 3. Discriminator_img - fake img added
-        self.dis_pair_real = torch.cat((self.lnmk_cur_img.unsqueeze(0),self.img_cur.unsqueeze(0)), 1)
-        self.dis_pair_fake = torch.cat((self.lnmk_cur_img.unsqueeze(0),self.img_predict.unsqueeze(0)),1)
+        self.dis_pair_real = torch.cat((self.lnmk_cur_imgT.unsqueeze(0).cuda(), self.img_cur.unsqueeze(0)), 1)
+        self.dis_pair_fake = torch.cat((self.lnmk_cur_imgT.unsqueeze(0).cuda(), self.img_predict), 1)
 
         # Loss Weight
         weight_G_word = 1
@@ -376,14 +404,14 @@ class TellGANModel(BaseModel):
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.img_predict), 1)
         
         #self.loss_G_word = self.criterionGAN(self.netD_lstm(self.dis_word_fake), True) * weight_G_word
-        self.loss_G_lnmk = self.criterionGAN(self.netD_lstm(self.dis_lnmk_fake), True) * weight_G_lnmk
-        self.loss_G_pair = self.criterionGAN(self.netD_pair(self.dis_pair_fake), True) * weight_G_img
+        self.loss_G_lnmk = self.criterionGAN(self.netD_lstm(self.dis_lnmk_fake.cuda()), True) * weight_G_lnmk
+        self.loss_G_pair = self.criterionGAN(self.netD_pair(self.dis_pair_fake.cuda()), True) * weight_G_img
 
         #self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         #self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
-        self.loss_lnmk_idt = self.criterionIdt(self.lnmk_predict, self.lnmk_cur.unsqueeze(0)) * weight_lnmk_idt
+        self.loss_lnmk_idt = self.criterionIdt(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
         loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
@@ -398,8 +426,8 @@ class TellGANModel(BaseModel):
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_cur.data
         self.img_predict_save = self.img_predict.data
-        self.lnmk_cur_save = self.lnmk_cur_img.data
-        self.lnmk_predict_save = self.lnmk_predict_img.data
+        self.lnmk_cur_save = self.lnmk_cur_img
+        self.lnmk_predict_save = self.lnmk_predict_img
 
         self.loss_G_lnmk = self.loss_G_lnmk.data[0]
         self.loss_G_pair = self.loss_G_pair.data[0]
@@ -411,8 +439,8 @@ class TellGANModel(BaseModel):
     def optimize_parameters(self, init_tensor = True):
         self.forward()
 
-        print("[First Frame Initialization] {0} [Word] {1}".format(init_tensor, self.input_transcription))
         if init_tensor == True:
+            #print("[First Frame Initialization] {0} [Word] {1}".format(init_tensor, self.input_transcription))
             self.backward_G_init()
         else:
             # G
@@ -427,12 +455,12 @@ class TellGANModel(BaseModel):
 
             # D_lnmk
             self.optimizer_D_lstm.zero_grad()
-            self.backward_D_lnmk
+            self.backward_D_lnmk()
             self.optimizer_D_lstm.step()
 
             # D_img
             self.optimizer_D_pair.zero_grad()
-            self.backward_D_pair
+            self.backward_D_pair()
             self.optimizer_D_pair.step()
 
             # D
@@ -448,12 +476,17 @@ class TellGANModel(BaseModel):
 
     def get_current_errors(self):
         if self.isTrain:
+            ''' self.loss_G_lnmk = self.loss_G_lnmk.data[0]
+        self.loss_G_pair = self.loss_G_pair.data[0]
+        self.loss_img_idt = self.loss_img_idt.data[0]
+        self.loss_lnmk_idt = self.loss_lnmk_idt.data[0]'''
             ret_errors = OrderedDict([
-                ('D', self.loss_D),
-                ('Ds', self.loss_D_speak),
-                ('G', self.loss_G),
-                ('Gs', self.loss_G_speak),
-                ('Idt', self.loss_idt)
+                ('D_lnmk', self.loss_D_lnmk),
+                ('D_pair', self.loss_D_pair),
+                ('G_lnmk', self.loss_G_lnmk),
+                ('G_pair', self.loss_G_pair),
+                ('img_idt', self.loss_img_idt),
+                ('lnmk_idt', self.loss_lnmk_idt)
             ])
         else:
             ret_errors = OrderedDict([('L', self.loss_test),('MSE', self.loss_test)])
@@ -464,8 +497,8 @@ class TellGANModel(BaseModel):
         img_init = util.tensor2im(self.img_init_save.unsqueeze(0))
         img_cur = util.tensor2im(self.img_cur_save.unsqueeze(0))
         img_predict = util.tensor2im(self.img_predict_save)
-        lnmk_cur = util.tensor2im(self.lnmk_cur_save)
-        lnmk_predict = util.tensor2im(self.lnmk_predict_save)
+        lnmk_cur = self.landmarkSuite.pilToMat(self.lnmk_cur_save)
+        lnmk_predict = self.landmarkSuite.pilToMat(self.lnmk_predict_save)
 
         ret_visuals = OrderedDict([('img_init', img_init), ('img_cur', img_cur), ('img_predict', img_predict), ('lnmk_cur', lnmk_cur), ('lnmk_predict', lnmk_predict)])
         return ret_visuals
