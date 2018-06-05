@@ -100,16 +100,31 @@ class LocalizeFace(object):
         centroid_norm = centroid * normalize_ratio
 
         object_l = int(centroid_norm[0] - self.width / 2)
-        object_r = int(centroid_norm[0] + self.width / 2)
+        object_r = int(object_l + self.width)
         object_t = int(centroid_norm[1] - self.height / 2)
-        object_b = int(centroid_norm[1] + self.height / 2)
+        object_b = int(object_t + self.height)
 
         localized = resized_img[object_t:object_b, object_l:object_r]
+
+        if localized.shape <= (self.height,self.width):
+            # Pad
+            if centroid_norm[0] >= self.width / 2:
+                padx = (0, int(self.width - localized.shape[1]))  #(left,right)
+            else:
+                padx = (int(self.width - localized.shape[1]), 0)  #(left,right)
+
+            if centroid_norm[1] >= self.height / 2:
+                pady = (0, int(self.height - localized.shape[0]))  # (top,bottom)
+            else:
+                pady = (int(self.height - localized.shape[0]), 0)  # (top,bottom)
+
+            localized = np.pad(localized, pad_width=(pady,padx,(0,0)), mode='mean')
+
+
         fpoints_norm = (fpoints_of * normalize_ratio).astype(np.int)
         fpoints_norm[:,:,1] -= object_t
         fpoints_norm[:,:,0] -= object_l
-        localized_gray = cv2.cvtColor(localized, cv2.COLOR_BGR2GRAY)
-        localized_mask = self.detector.create_mask(localized_gray, fpoints_norm)
+        localized_mask = self.detector.create_mask((localized.shape[:2]), fpoints_norm)
 
         #localized_mask = resized_mask[object_t:object_b, object_l:object_r]
 
@@ -235,7 +250,7 @@ class FeaturePredictor(object):
 
         features1 = features1.reshape(-1,1,2) if features1 is not None else None
 
-        mask = self.create_mask(gray1, features1)
+        mask = self.create_mask((gray1.shape[:2]), features1)
 
         return features1, self.matToPil(mask)
 
@@ -244,7 +259,7 @@ class FeaturePredictor(object):
         gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
         features0 = self.getFeaturePoints(gray0, mouthonly)
 
-        mask = self.create_mask(gray0, features0)
+        mask = self.create_mask((gray0.shape[:2]), features0)
         return features0, self.matToPil(mask)
 
 
@@ -257,22 +272,28 @@ class FeaturePredictor(object):
 
         return good_new, good_old
 
-    def create_mask(self, img, features):
+    def create_mask(self, size, features):
 
-        mask = np.zeros_like(img)
+        mask = np.zeros(size, dtype=np.uint8)
         if features is None:
             return mask
 
         features_ = np.copy(features).astype(np.int)
 
+        #features_ = features_[features_[:,0,0] < img.shape[0]]
+        #features_ = features_[features_[:,0,1] < img.shape[1]]
+
         mask[features_[:,:,1], features_[:,:,0]] = 255
 
         return mask
 
-
     def locate(self, img_grey):
         faces = self.face_detector(img_grey, 1)
         return faces
+
+    def extractMouthFeatures(self, features):
+        feat_points = features[48:68]
+        return feat_points
 
     def getFeaturePoints(self, img_grey, mouth_only=False):
         faces = self.locate(img_grey)
@@ -302,7 +323,7 @@ class FeaturePredictor(object):
 
         if mouth_only is True:
             # starting at 1, mouth indices are 49-68
-            feat_points = feat_points[48:68]
+            feat_points = self.extractMouthFeatures(feat_points)
 
         #if for_optical_flow:
         feat_points = np.expand_dims(feat_points, axis=1).astype(np.float32)
@@ -314,6 +335,13 @@ class FeaturePredictor(object):
 
     def matToPil(self, mat_img):
         return Image.fromarray(mat_img)
+
+
+    def pilToMatGrey(self, pil_img):
+        pil_image = pil_img.convert('LA')
+        open_cv_image = np.array(pil_image)
+        # Convert RGB to BGR
+        return open_cv_image  # [:, :, ::-1].copy()
 
     def pilToMat(self, pil_img):
         pil_image = pil_img.convert('RGB')
