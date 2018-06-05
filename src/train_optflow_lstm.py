@@ -135,7 +135,9 @@ def get_arguments():
     parser.add_argument("--continue", action="store_true", dest="isContinue", default=False,
                         help="Continue Training, loads model, use with --ep-start and --vid-start")
     parser.add_argument("--mouth", action="store_true", dest="mouthonly", default=False,
-                        help="use mouth features only")
+                        help="localize mouth features only")
+    parser.add_argument("--all-feat", action="store_true", dest="allFeatures", default=False,
+                        help="Train and test using all features")
     parser.add_argument("--localize", action="store_true", dest="localize", default=False,
                         help="localize")
     parser.add_argument("--dataroot", action=FullPaths, type=is_dir, dest="dataroot", default="./",
@@ -184,6 +186,7 @@ def normalize(data_points, img_size, scale_down=True):
 
 if __name__ == '__main__':
 
+    # Setup input args
     args = get_arguments()
 
     isTrain = args.isTrain
@@ -202,41 +205,44 @@ if __name__ == '__main__':
     #force continue to be false if not training
     isContinue = args.isContinue if isTrain is True else False
 
-
-    #dataroot = "/home/jake/classes/cs703/Project/data/grid/"
     if isTrain:
         print("Training(Continue:{0},ep:{1},vid{2})...".format(isContinue,ep_start,vid_start))
         if not isSave:
             print("WARNING: Not saving checkpoints!")
     else:
         print("Testing...")
-        #dataroot = "/home/jake/classes/cs703/Project/data/grid_test/"
 
-    #save_dir = "./optflowGAN_chkpnts"
-
+    # Name output dir accoding to action
     mode = "train" if isTrain else "test"
     output_dir = '{0}_{1}'.format(output_dir,mode)
 
+    # Initilize video save path
+    vid_path = "%s/pred_mask_{0}.mp4" % output_dir
+
+    # create missing dirs
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    # Default Face size
     face_size=(288, 360)
 
+    # Face size changes depending on localization
     if islocalize:
         face_size = (128,128) if isMouthOnly is False else (50, 100)
 
-    save_freq=20
-
+    # TODO: Currently we always only use mouth landmars, add option to use all
     # number of xy feature points (xyxyxyxyxyxyxy...)
-    nFeaturePoints = 68 if isMouthOnly is False else 20
+    nFeaturePoints = 20 #68 if isMouthOnly is False else 20
 
-
+    # Init Image Transforms, localizer and Feature Detector
     toTensor = transforms.ToTensor()
     localizer = LocalizeFace(height=face_size[0], width=face_size[1],
                              predictor_path=face_predictor_path, mouthonly=isMouthOnly)
+
+    landmarkSuite = FeaturePredictor(face_predictor_path)
 
     frame_transforms = transforms.Compose([
         #LocalizeFace(height=face_size,width=face_size),
@@ -244,17 +250,19 @@ if __name__ == '__main__':
         #normTransform
     ])
 
+    # Setup dataset
     dataset = GRID(dataroot, transform=frame_transforms)
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
+    # Setup word embedding
     word_dim = nFeaturePoints*2
     embeds = nn.Embedding(100, word_dim)  # 100 words in vocab,  dimensional embeddings
     word_to_ix = {}
+
+    # Initialize Models
     hidden_layers=3
     model = NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
-
-    hidden_state = model.init_hidden()
 
     if isTrain is False or isContinue is True:
         which_epoch = 'latest'
@@ -262,7 +270,7 @@ if __name__ == '__main__':
 
     model.cuda()
 
-    opticalFlow = FeaturePredictor(face_predictor_path)
+    # Initialize Loss and optimizers
     crit = nn.MSELoss()
     crit.cuda()
 
@@ -272,9 +280,6 @@ if __name__ == '__main__':
 
     total_steps = 0
 
-    vid_path = "%s/pred_mask_{0}.mp4" % output_dir
-
-
     for epoch in range(ep_start, 100):
 
         if isTrain is True:
@@ -283,7 +288,6 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        #for vid_idx, video in enumerate(dataset[vid_start:]):
         for vid_idx in range(vid_start, dataset_size):
             # Get video
             video = dataset[vid_idx]
@@ -291,18 +295,15 @@ if __name__ == '__main__':
             #if total_steps % opt.print_freq == 0:
             #    t_data = iter_start_time - iter_data_time
 
-            #visualizer.reset()
-            #total_steps += opt.batchSize
-            #epoch_iter += opt.batchSize
-
             init_tensor=True
             prev_feat_seq = None
-            #word_seq = None
             prev_mask = None
             prev_frame = None
+            prev_pred_featT = None
             vid_loss = []
-            #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
+
             sample_frames = []
+
             # frame is a tuple (frame_img, frame_word)
             last_word = None
             for frame_idx, frame in enumerate(video):
@@ -312,96 +313,113 @@ if __name__ == '__main__':
                     optimizer_G.zero_grad()
 
                 (img, trans) = frame
+                mat_img = landmarkSuite.pilToMat(img)
                 imgT = toTensor(img)
 
-
-                #if imgT.size(1) is not face_size[0] or imgT.size(2) is not face_size[1] or trans is None:
+                # If we have a problem with the video, reinitialize at next best frame
                 if trans is None:
                     print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, imgT.size(), trans))
                     prev_feat_seq=None
-                    #word_seq=None
+                    word_seq=None
                     init_tensor=True
-                    last_word = None
                     continue
 
+                # Add Word to dictionary if not seen befor
                 if trans not in word_to_ix:
                     word_to_ix[trans] = len(word_to_ix)
 
-                if last_word is None:
-                    last_word = trans
-
-                #np_img = (img.permute(1,2,0).data.cpu().numpy()*255).astype(np.uint8)
+                # Init to None for checking success
                 feat0 = None
                 if islocalize:
-                    frame, mask, feat0 = localizer.localize(opticalFlow.pilToMat(img),mouthonly=isMouthOnly)
+                    # Localize/scale the face and return feature points for new image size
+                    localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=isMouthOnly)
+
+                    if feat0 is not None:
+                        # We only want to use the mouth landmarks
+                        if not isMouthOnly:
+                            feat0 = landmarkSuite.extractMouthFeatures(feat0)
+
+                        # localizedFrame is PIL image
+                        pil_localizedFrame = landmarkSuite.matToPil(localizedFrame)
+
+                        # Create mask from features, convert to PIL
+                        mask = landmarkSuite.matToPil(
+                            landmarkSuite.create_mask(size=localizedFrame.shape[0:2],
+                                                      features=feat0)
+                        )
+
                     #mask.show()
                     #frame.show()
                 else:
-                    feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
+                    # Not localizing, just return mask and features unchanged
+                    feat0, mask = landmarkSuite.getFeatureMask(mat_img, mouthonly=isMouthOnly)
 
                 if feat0 is None or nFeaturePoints > feat0.shape[0]:
                     shape = None if feat0 is None else feat0.shape
                     print("Initializing State: {}".format(shape))
                     init_tensor=True
                     prev_feat_seq=None
-                    last_word=None
-                    #word_seq=None
+                    word_seq=None
                     continue
 
-                #normalize
+                #normalize between 0 and 1
                 feat0_norm = feat0.copy()
                 feat0_norm[:,:,1] /= face_size[0]
                 feat0_norm[:,:,0] /= face_size[1]
 
+                # Flatten 2D (x,y) coords to 1-D [xyxyxy]
                 featTB4 = Variable(torch.from_numpy(feat0_norm))
                 featT = featTB4.view(featTB4.numel())
-                #featT2D = featT.clone().view(nFeaturePoints, 1, 2)
-                #featT2D[:,:,1] *= face_size[0]
-                #featT2D[:,:,0] *= face_size[1]
-                #OpticalFlow.matToPil(mask).show()
-                #maskT = Variable(toTensor(mask))
 
+                # Create word tensor from embedding
                 lookup_tensor = torch.LongTensor([word_to_ix[trans]])
                 transT= embeds(Variable(lookup_tensor))
 
                 # INitialize the input with ground truth only
+                # Training: always initilize with GT
+                # Testing: TRY to always initilize with predicted (except errors or frist frame)
                 if init_tensor == True or last_word is not trans:
-                    #hidden_state = model.init_hidden()
-                    prev_feat_seq = torch.cat((transT, featT.unsqueeze(0)),0)
-                    #print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
-                    #      .format(init_tensor, last_word, trans, prev_feat_seq.size()))
-                    init_tensor = False
-                    last_word = trans
-                    if vid_idx % vid_save_freq == 0:
-                        sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
-                    continue
 
-                #if word_seq is not None:
-                #    word_seq = torch.cat((word_seq, transT), 0)
-                #else:
-                #    word_seq = transT
+                    # If we are training or there is no previous predected lmks, initialize with GT
+                    # Initilize with predicted otherwise
+                    if isTrain or prev_feat_seq is None:
+                        init_feature = featT.unsqueeze(0)
+                        prev_feat_seq = torch.cat((transT, init_feature), 0)
 
-                #Concat previous image and current word, add batch dim
-                #input = torch.cat((prev_feat_seq, word_seq), 1).unsqueeze(1).cuda()
+                        if vid_idx % vid_save_freq == 0:
+                            sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
+                        last_word = trans
+                        init_tensor = False
+                        continue
+                    else:
+                        init_feature = prev_feat_seq[-1].unsqueeze(0)
+
+                        prev_feat_seq = torch.cat((transT, init_feature), 0)
+
+                # Input is created over time, create batch dim and use GPU
                 input = prev_feat_seq.unsqueeze(1).cuda()
 
-                #hidden_state = model.init_hidden()
-                #pred_featT, hidden_state = model(input.detach()), hidden_state)
+                # Detach input so it is not back-propigated since we use it over time
                 pred_featT = model(input.detach())
 
-                #Get last value in sequence
-                #pred_featT = pred_featT_seq[-1]
-
-
-                # Train Generator (LSTM)
+                # Loss Predicted - Groundtruth
                 loss = crit(pred_featT, featT.unsqueeze(0).cuda())
+
+                # Running Video loss
                 vid_loss.append(loss.clone().data.cpu().numpy())
 
+                # If we are training we want to back-propigate the weights
                 if isTrain:
-                    loss.backward()#retain_graph=True)
+                    loss.backward()
                     optimizer_G.step()
 
+                # Add GT (Training) or Predicted (Testing) landmarks to LSTM input
+                if isTrain:
+                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
+                else:
+                    prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
 
+                # Save predicted frames to video
                 if vid_idx % vid_save_freq == 0:
                     pred_featT2d = pred_featT.clone().view(nFeaturePoints,1,2)
                     #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
@@ -409,27 +427,16 @@ if __name__ == '__main__':
                     pred_featT2d[:,:,1] *= (face_size[0])
                     pred_featT2d[:,:,0] *= (face_size[1])
                     pred_feat = pred_featT2d.data.cpu().numpy()
-                    pred_mask = opticalFlow.create_mask(mask, pred_feat)
-                    pil_pred_mask = opticalFlow.matToPil(pred_mask)
+                    pred_mask = landmarkSuite.create_mask(size=(mask.size[1], mask.size[0]),
+                                                          features=pred_feat)
+
+                    pil_pred_mask = landmarkSuite.matToPil(pred_mask)
                     sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))
 
-                #mask.save("mask_{}.png".format(frame_idx))
-                if isTrain:
-                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
-                else:
-                    prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
-                #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
-
-                #if (isTrain and frame_idx%25 == 0) or (not isTrain and frame_idx%25 == 0):
-                #    init_tensor=True
-                #    prev_feat_seq=None
-                    #word_seq=None
-
                 # Setup next iteration
-                #prev_frame = img
                 last_word = trans
-                #prev_mask = mask
 
+            # Save Video
             if vid_idx % vid_save_freq == 0:
                 outputdata = np.expand_dims(np.array(sample_frames), axis=3)
                 skvideo.io.vwrite(vid_path.format(vid_idx), outputdata)
