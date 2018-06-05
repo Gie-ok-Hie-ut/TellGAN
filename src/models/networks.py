@@ -845,7 +845,7 @@ class NextFeaturesForWord(nn.Module):
         self.num_layers = num_layers
 
         self.input_seq = [
-            nn.Linear(hidden_size,hidden_size),
+            nn.Linear(input_size,input_size),
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]
