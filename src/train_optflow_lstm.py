@@ -295,8 +295,11 @@ if __name__ == '__main__':
 
             init_tensor=True
             prev_feat_seq = None
-            word_seq = None
-
+            #word_seq = None
+            prev_mask = None
+            prev_frame = None
+            prev_pred_featT = None
+            pil_pred_mask = None
             vid_loss = []
 
             sample_frames = []
@@ -369,13 +372,20 @@ if __name__ == '__main__':
                 transT= embeds(Variable(lookup_tensor))
 
                 # INitialize the input with ground truth only
-                if init_tensor == True:
-                    prev_feat_seq = featT.unsqueeze(0)
-                    #print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
-                    #      .format(init_tensor, last_word, trans, prev_feat_seq.size()))
+                if init_tensor == True or last_word is not trans:
+                    #hidden_state = model.init_hidden()
+                    if isTrain or prev_feat_seq is None or predMask is None:
+                        init_feature = featT.unsqueeze(0)
+                        predMask = mask
+                    else:
+                        init_feature = prev_feat_seq[-1].unsqueeze(0)
+                        predMask = pil_pred_mask
+
+                    prev_feat_seq = torch.cat((transT, init_feature), 0)
+
                     init_tensor = False
                     if vid_idx % vid_save_freq == 0:
-                        sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
+                        sample_frames.append(np.concatenate((mask.copy(), predMask.copy()), axis=1))
                     continue
 
                 if word_seq is not None:
@@ -421,6 +431,12 @@ if __name__ == '__main__':
                 #    init_tensor=True
                 #    prev_feat_seq=None
                     #word_seq=None
+
+                # Setup next iteration
+                #prev_frame = img
+                last_word = trans
+                prev_pred_featT = pred_featT.cpu()
+                #prev_mask = mask
 
 
             if vid_idx % vid_save_freq == 0:
