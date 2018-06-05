@@ -175,6 +175,19 @@ def distLoss(fake, gt):
     loss = torch.sum(fake - gt)
     return loss
 
+def Word2Tensor(word, dictionary, dic_size, dim=1):
+    word_cur = word
+
+    # Update unseen word
+    if dictionary.get(word_cur, -1) == -1:
+        dictionary.update({word_cur: float((len(dictionary) + 1)) / dic_size})
+
+    # Make Tensor
+    vec2np = np.full((1, dim), dictionary[word_cur])
+    np2tensor = torch.from_numpy(vec2np).float()
+
+    return np2tensor
+
 
 
 # Normalize and de-normalize
@@ -257,8 +270,15 @@ if __name__ == '__main__':
 
     # Setup word embedding
     word_dim = nFeaturePoints*2
-    embeds = nn.Embedding(100, word_dim)  # 100 words in vocab,  dimensional embeddings
+    nVocab = 100
     word_to_ix = {}
+
+    try:
+        word_to_ix = np.load('word_embedding.npy').item()
+        print("[Dictionary] Loading Existing Embedding Dictionary")
+    except IOError as e:
+        word_to_ix = {'default': 0}
+        print("[Dictionary] Building New Word Embedding Dictionary")
 
     # Initialize Models
     hidden_layers=3
@@ -324,8 +344,12 @@ if __name__ == '__main__':
                     init_tensor=True
                     continue
 
+
                 # Add Word to dictionary if not seen befor
                 if trans not in word_to_ix:
+                    if len(word_to_ix) > nVocab:
+                        init_tensor = True
+                        continue
                     word_to_ix[trans] = len(word_to_ix)
 
                 # Init to None for checking success
@@ -372,8 +396,11 @@ if __name__ == '__main__':
                 featT = featTB4.view(featTB4.numel())
 
                 # Create word tensor from embedding
-                lookup_tensor = torch.LongTensor([word_to_ix[trans]])
-                transT= embeds(Variable(lookup_tensor))
+                transT = Word2Tensor(word=trans,
+                                     dictionary=word_to_ix,
+                                     dic_size=nVocab,
+                                     dim=nFeaturePoints*2)
+
 
                 # INitialize the input with ground truth only
                 # Training: always initilize with GT
