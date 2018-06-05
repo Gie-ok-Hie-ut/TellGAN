@@ -524,9 +524,9 @@ class WordUnetGenerator(nn.Module):
         self.down2 = conv_down(32, 64)
         self.down3 = conv_down(64, 128)
         #self.up1 = conv_up(160, 64, 32)
-        self.up1 = conv_up(128,128,3,64)
-        self.up2 = conv_up(64,32,3,32)
-        self.up3 = conv_up(32,16,3,32)
+        self.up1 = conv_up(128,64,1,64)
+        self.up2 = conv_up(64,32,1,32)
+        self.up3 = conv_up(32,16,1,32)
         self.same2 = conv_same(32, dim_out)
 
         self.pool = self.pool_layer()
@@ -537,8 +537,8 @@ class WordUnetGenerator(nn.Module):
 
     def forward(self, img, lm):
         # Preprocess
-        lm1=pool(lm)  # 256/256/3 -> 128/128/3
-        lm2=pool(lm1) # 128/128/3 -> 64/64/3
+        lm1=self.pool(lm)  # 256/256/3 -> 128/128/3
+        lm2=self.pool(lm1) # 128/128/3 -> 64/64/3
         #lm3=pool(lm2) # 64/64/3 -> 32/32/3
 
         # Encoder
@@ -556,7 +556,7 @@ class WordUnetGenerator(nn.Module):
         x6 = self.up2(x5,x2,lm1) # 64/64/64, 128/128/32, 128/128/3 -> 128/128/32
         x7 = self.up3(x6,x1,lm) # 128/128/32, 256/256/16, 256/256/3 -> 256/256/32
 
-        x8 = self.same3(x7)
+        x8 = self.same2(x7)
 
         return x8
 
@@ -613,34 +613,6 @@ class conv_up(nn.Module):
         x = torch.cat([x1, x2, x3], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
-        return x
-
-
-class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes):
-        super(UNet, self).__init__()
-        self.inc = inconv(n_channels, 64)
-        self.down1 = down(64, 128)
-        self.down2 = down(128, 256)
-        self.down3 = down(256, 512)
-        self.down4 = down(512, 512)
-        self.up1 = up(1024, 256)
-        self.up2 = up(512, 128)
-        self.up3 = up(256, 64)
-        self.up4 = up(128, 64)
-        self.outc = outconv(64, n_classes)
-
-    def forward(self, x):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
-        x = self.outc(x)
         return x
 
 # Defines the Unet generator.
@@ -878,7 +850,7 @@ class NextFeaturesForWord(nn.Module):
                 torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
 
     def forward(self, input):
-            lstm_in = self.in_layer(input)
-            pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
-            out = pred_seq[-1]
-            return out
+        lstm_in = self.in_layer(input)
+        pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
+        out = pred_seq[-1]
+        return out

@@ -1,4 +1,4 @@
-def create_model(opt):
+def create_model(opt, landmarkSuite=None):
     model = None
     print(opt.model)
     if opt.model == 'cycle_gan':
@@ -19,6 +19,6 @@ def create_model(opt):
         model = TellGANModel()
     else:
         raise NotImplementedError('model [%s] not implemented.' % opt.model)
-    model.initialize(opt)
+    model.initialize(opt, landmarkSuite)
     print("model [%s] was created" % (model.name()))
     return model

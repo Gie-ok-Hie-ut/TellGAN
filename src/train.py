@@ -16,26 +16,27 @@ if __name__ == '__main__':
     #normMean = [0.49139968, 0.48215827, 0.44653124]
     #normStd = [0.24703233, 0.24348505, 0.26158768]
     #normTransform = transforms.Normalize(normMean, normStd)
-    face_size=128
+    face_size = (128, 128)
     toTensor=transforms.ToTensor()
     face_predictor_path = './shape_predictor_68_face_landmarks.dat'
-    localizer = LocalizeFace(height=face_size, width=face_size, predictor_path=face_predictor_path, mouthonly=True, padding = 1)
+    localizer = LocalizeFace(height=face_size[0], width=face_size[1], predictor_path=face_predictor_path, mouthonly=True)
     frame_transforms = transforms.Compose([
-    	localizer,
+    	#localizer,
         #LocalizeFace(height=face_size,width=face_size),
-        transforms.ToTensor()#,
+        #transforms.ToTensor()#,
         #normTransform
     ])
 
+    # Number of landmarks to detect
+    nFeaturePoints = 20
 
-
-    opticalFlow = FeaturePredictor(face_predictor_path)
+    landmarkSuite = FeaturePredictor(face_predictor_path)
 
     dataset = GRID(opt.dataroot, transform=frame_transforms)
     dataset_size = len(dataset)
     print('#training images = %d' % dataset_size)
 
-    model = create_model(opt)
+    model = create_model(opt, landmarkSuite=landmarkSuite)
     visualizer = Visualizer(opt)
     total_steps = 0
 
@@ -47,7 +48,8 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx, video in enumerate(dataset):
+        for vid_idx in range(0,dataset_size):
+            video = dataset[vid_idx]
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
@@ -57,66 +59,64 @@ if __name__ == '__main__':
             epoch_iter += opt.batchSize
 
             init_tensor=True
-
+            last_word = None
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
 
-                (img, trans) = frame
+                (img, word) = frame
 
-                img.save('./first.jpg')
-
-
-                ############ Landmark ###############
-                feat0, mask = opticalFlow.getFeatureMask(img.data.cpu().numpy(), mouthonly=isMouthOnly)
-
-                if feat0 is None or nFeaturePoints > feat0.shape[0]:
-                    shape = None if feat0 is None else feat0.shape
-                    print("Initializing State: {}".format(shape))
-                    init_tensor=True
-                    prev_feat_seq=None
-                    word_seq=None
+                # If we have a problem with the video, reinitialize at next best frame
+                if word is None:
+                    print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, imgT.size(), word))
+                    init_tensor = True
                     continue
 
-                #normalize
-                feat0_norm = feat0.copy()
-                feat0_norm[:,:,1] /= face_size[0]
-                feat0_norm[:,:,0] /= face_size[1]
+                ############ Landmarks and localized frame ###############
+                mat_img = landmarkSuite.pilToMat(img)
+                localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=False)
 
-                featTB4 = Variable(torch.from_numpy(feat0_norm))
-                featT = featTB4.view(featTB4.numel())
+                # check if Features are detected
+                exptected_nlmks = 68
+                if feat0 is None or exptected_nlmks > feat0.shape[0]:
+                    shape = None if feat0 is None else feat0.shape
+                    print("Missing landmarks, Initializing State: {}".format(shape))
+                    init_tensor=True
+                    continue
+
+                # We only want to use the mouth landmarks
+                feat0 = landmarkSuite.extractMouthFeatures(feat0)
 
 
-
+                # localizedFrame is PIL image
+                pil_localizedFrame = landmarkSuite.matToPil(localizedFrame)
+                imgT = toTensor(pil_localizedFrame)
 
 				#######################################
 
-
-
-
                 # Exception - frame size
-                if img.size(1) is not face_size or img.size(2) is not face_size or trans is None:
-                    print("[Incomplete Frame] {0} Size: {1} Word: {2}".format(frame_idx, img.size(), trans))
+                if localizedFrame.shape[1] is not face_size[0] or localizedFrame.shape[0] is not face_size[1]:
+                    print("[Incomplete Frame] {0} Size: {1}".format(frame_idx, img.size))
                     init_tensor=True
                     continue
 
                 # Exception - word
-                if trans == "sil" or trans == "bin":
+                if word == "sil":
                 	continue
 
                 # Exception - dic size                
-                if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(trans, -1) == -1:
-                	print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, trans))
+                if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(word, -1) == -1:
+                	print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, word))
                 	init_tensor=True
                 	continue
-        		
-                # Total Frame
-                if frame_idx%20 == 0:
-                    init_tensor=True
 
                 # Train
-                model.set_input(frame)
+                input = (imgT, word, feat0)
+                model.set_input(input)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False
+
+                #Set up next frame
+                last_word = word
 
 
             if total_steps % opt.display_freq == 0:
