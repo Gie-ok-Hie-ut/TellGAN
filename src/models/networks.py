@@ -819,9 +819,9 @@ class PixelDiscriminator(nn.Module):
         else:
             return self.net(input)
 
-class LSTMDiscriminator(nn.Module):
+class SimpleLSTMDiscriminator(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=2):
-        super(LSTMDiscriminator, self).__init__()
+        super(SimpleLSTMDiscriminator, self).__init__()
 
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -831,7 +831,7 @@ class LSTMDiscriminator(nn.Module):
         ]
 
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
-        self.in_layer - nn.Sequential(*self.input_seq)
+        self.in_layer = nn.Sequential(*self.input_seq)
 
         self.hidden = self.init_hidden()
 
