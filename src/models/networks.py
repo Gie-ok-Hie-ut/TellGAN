@@ -133,7 +133,7 @@ def define_ImgDecoder(input_nc, output_nc, ngf, which_model_netG, norm='batch', 
     which_model_netG = 'resnet_3blocks_dec'
 
     if which_model_netG == 'resnet_3blocks_dec':
-        netImgDecoder = ResnetGenerator_Decoder_Summation(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
+        netImgDecoder = ResnetGenerator_Decoder(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=3, gpu_ids=gpu_ids)
     else:
         raise NotImplementedError('ImgEncoder model name [%s] is not recognized' % which_model_netG)
 
@@ -818,6 +818,7 @@ class PixelDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
         else:
             return self.net(input)
+
 
 class NextFeaturesForWord(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=2):
