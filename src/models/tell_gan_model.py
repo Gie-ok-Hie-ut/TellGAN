@@ -27,6 +27,9 @@ class TellGANModel(BaseModel):
         self.lstm_nlayers = 1 # too shallow?
         self.lstm_kernel_size = (3, 3)
 
+        nFeaturePoints = 68
+        hidden_layers=3
+
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'WordUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         self.netPredictor = networks.NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
@@ -171,9 +174,9 @@ class TellGANModel(BaseModel):
                 self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
                 self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
-                self.word_enc_flag = True
+                self.word_flag = True
                 self.img_enc_stack = self.img_cur_enc
-                self.word_enc_stack = 0  # Is it okay to use?
+                self.word_stack = 0  # Is it okay to use?
 
                 # Refresh All saved data
                 self.convlstm_input = 0
@@ -202,18 +205,18 @@ class TellGANModel(BaseModel):
 
                 # Stack Before
                 #self.img_enc_stack
-                if self.word_enc_flag == True:
-                    self.word_enc_stack = self.word_cur_enc
-                    self.word_enc_flag = False
+                if self.word_flag == True:
+                    self.word_stack = self.word_cur_enc
+                    self.word_flag = False
                 else:
-                    self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
+                    self.word_stack = torch.cat((self.word_stack, self.word_cur_enc), 0)
 
-                self.convlstm_input = torch.cat((self.img_enc_stack, self.word_enc_stack), 1)  # Stack Input
+                self.convlstm_input = torch.cat((self.img_enc_stack, self.word_stack), 1)  # Stack Input
                 self.convlstm_output = self.netImgLSTM(self.convlstm_input)
 
                 # Stack predicted image encoding After
                 self.img_enc_stack = torch.cat((self.img_enc_stack, self.convlstm_output.unsqueeze(0)), 0)
-                # self.word_enc_stack
+                # self.word_stack
 
 
                 self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
@@ -288,9 +291,9 @@ class TellGANModel(BaseModel):
         self.lnmk_cur_enc = self.netImgEncoder(self.lnmk_init.unsqueeze(0))
         self.word_cur_enc = self.ExpandTensor(self.word_init, self.feature_size, self.feature_size)
 
-        self.word_enc_flag = True
+        self.word_flag = True
         self.img_enc_stack = self.img_cur_enc
-        self.word_enc_stack = 0  # Is it okay to use?
+        self.word_stack = 0  # Is it okay to use?
 
         # Refresh All saved data
         self.convlstm_input = 0
@@ -307,6 +310,18 @@ class TellGANModel(BaseModel):
         self.loss_img_idt = 0
         self.loss_lnmk_idt = 0
 
+    def LandmrkToImg(self, lnmk):
+        pred_featT2d = pred_featT.clone().view(nFeaturePoints,1,2)
+        #pred_featT2d = pred_featT.clone().view(nFeaturePoints, 1, 2)
+        # denormalize
+        pred_featT2d[:,:,1] *= (face_size[0])
+        pred_featT2d[:,:,0] *= (face_size[1])
+        pred_feat = pred_featT2d.data.cpu().numpy()
+        pred_mask = opticalFlow.create_mask(mask, pred_feat)
+        pil_pred_mask = opticalFlow.matToPil(pred_mask)
+        sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))      
+        return lnmk_img
+
 
     def backward_G(self):
         # Setting
@@ -314,55 +329,39 @@ class TellGANModel(BaseModel):
         self.word_cur = self.word_input
         self.lnmk_cur = self.lnmk_input
 
-        self.lnmk_cur_enc = self.netImgEncoder(self.lnmk_cur.unsqueeze(0))
-        self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
-        
-        #Input 
-        # as (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
-        #Output
-        # img_cur_enc => 1 * 256 * 38 * 38 (b * c * w * h)
-
-
-
         # Stack Before
-        self.lnmk_enc_stack
-        if self.word_enc_flag == True:
-            self.word_enc_stack = self.word_cur_enc
-            self.word_enc_flag = False
-        else:
-            self.word_enc_stack = torch.cat((self.word_enc_stack, self.word_cur_enc), 0)
+        if self.word_flag == True:
+            self.lstm_stack = torch.cat((self.word_cur, self.lnmk_cur.unsqueeze(0)),0)
+            self.word_flag = False
 
-        # ConvLSTM
-        self.convlstm_input = torch.cat((self.lnmk_enc_stack, self.word_enc_stack), 1)
-        self.convlstm_output = self.netImgLSTM(self.convlstm_input)
-        self.lnmk_predict = self.netImgDecoder(self.convlstm_output)
+        # Prediction
+        self.lnmk_predict = self.netPredictor(self.lstm_stack)
 
         # Final
-        self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
+        self.lnmk_cur_img = LandmarkToImg(self.lnmk_cur)
+        self.lnmk_predict_img = LandmarkToImg(self.lnmk_predict)
+        self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_cur_img.unsqueeze(0)) # Train focus on Face Generator
+        #self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
 
         # Stack After
-        self.lnmk_enc_stack = torch.cat((self.lnmk_enc_stack, self.lnmk_cur_enc), 0)
+        self.lstm_stack = torch.cat((self.lstm_stack), lnmk_cur.squeeze(0), 0)
+        self.lstm_stack2 = torch.cat((self.lstm_stack), lnmk_predict.squeeze(0),0)
+
+
 
 
         # For Discriminator
         # 1. Discriminator_lnmk - fake landmark added
-        self.lnmk_pred_enc = self.netImgEncoder(self.lnmk_predict.unsqueeze(0))
-        self.lnmk_enc_stack2 = torch.cat((self.lnmk_enc_stack, self.lnmk_pred_enc),0) # Only the last one is fake
-
-        self.dis_lnmk_real = torch.cat((self.lnmk_enc_stack, self.word_enc_stack), 1)
-        self.dis_lnmk_fake = torch.cat((self.lnmk_enc_stack2, self.word_enc_stack), 1)
+        self.dis_lnmk_real = self.lstm_stack
+        self.dis_lnmk_fake = self.lstm_stack2
 
         # 2. Discriminator_word - fake word added
-        #self.dis_word_real = torch.cat((self.lnmk_enc_stack, self.word_enc_stack2_fake), 1)
-        #self.dis_word_fake = torch.cat((self.lnmk_enc_stack, self.word_enc_stack), 1)
+        #self.dis_word_real = torch.cat((self.lnmk_stack, self.word_stack2_fake), 1) # Should be changed
+        #self.dis_word_fake = torch.cat((self.lnmk_stack, self.word_stack), 1)
 
         # 3. Discriminator_img - fake img added
-        self.dis_pair_real = torch.cat((self.lnmk_cur.unsqueeze(0),self.img_cur.unsqueeze(0)), 1)
-        self.dis_pair_fake = torch.cat((self.lnmk_cur.unsqueeze(0),self.img_predict.unsqueeze(0)),1)
-
-
-
-
+        self.dis_pair_real = torch.cat((self.lnmk_cur_img.unsqueeze(0),self.img_cur.unsqueeze(0)), 1)
+        self.dis_pair_fake = torch.cat((self.lnmk_cur_img.unsqueeze(0),self.img_predict.unsqueeze(0)),1)
 
         # Loss Weight
         weight_G_word = 1
@@ -381,9 +380,9 @@ class TellGANModel(BaseModel):
 
         #self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         #self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
+        #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
         self.loss_lnmk_idt = self.criterionIdt(self.lnmk_predict, self.lnmk_cur.unsqueeze(0)) * weight_lnmk_idt
-        #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
         loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
@@ -398,8 +397,8 @@ class TellGANModel(BaseModel):
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_cur.data
         self.img_predict_save = self.img_predict.data
-        self.lnmk_cur_save = self.lnmk_cur.data
-        self.lnmk_predict_save = self.lnmk_predict.data
+        self.lnmk_cur_save = self.lnmk_cur_img.data
+        self.lnmk_predict_save = self.lnmk_predict_img.data
 
         self.loss_G_lnmk = self.loss_G_lnmk.data[0]
         self.loss_G_pair = self.loss_G_pair.data[0]
@@ -473,9 +472,10 @@ class TellGANModel(BaseModel):
 
     def save(self, label):
         self.save_network(self.netG, 'WordUnet', label, self.gpu_ids)
-        self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
-        self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)
-        self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
+        self.save_network(self.netPredictor, 'Predictor', label, self.gpu_ids)
+        #self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
+        #self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)
+        #self.save_network(self.netImgDecoder, 'ImgDecoder', label, self.gpu_ids)
         # self.save_network(self.netWordEmbed, 'WordEmbed', label, self.gpu_ids)
 
         self.save_network(self.netD_lstm, 'Discriminator_lstm', label, self.gpu_ids)
