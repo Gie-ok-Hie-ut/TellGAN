@@ -64,7 +64,7 @@ class LocalizeFace(object):
 
 
         if fpoints_of is None:
-            return frame, None, None
+            return frame, None
 
         fpoints = fpoints_of.squeeze().astype(np.int)
 

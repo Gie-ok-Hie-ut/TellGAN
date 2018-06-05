@@ -334,18 +334,19 @@ if __name__ == '__main__':
                     # Localize/scale the face and return feature points for new image size
                     localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=isMouthOnly)
 
-                    # We only want to use the mouth landmarks
-                    if not isMouthOnly:
-                        feat0 = landmarkSuite.extractMouthFeatures(feat0)
+                    if feat0 is not None:
+                        # We only want to use the mouth landmarks
+                        if not isMouthOnly:
+                            feat0 = landmarkSuite.extractMouthFeatures(feat0)
 
-                    # localizedFrame is PIL image
-                    pil_localizedFrame = landmarkSuite.matToPil(localizedFrame)
+                        # localizedFrame is PIL image
+                        pil_localizedFrame = landmarkSuite.matToPil(localizedFrame)
 
-                    # Create mask from features, convert to PIL
-                    mask = landmarkSuite.matToPil(
-                        landmarkSuite.create_mask(size=localizedFrame.shape[0:2],
-                                                  features=feat0)
-                    )
+                        # Create mask from features, convert to PIL
+                        mask = landmarkSuite.matToPil(
+                            landmarkSuite.create_mask(size=localizedFrame.shape[0:2],
+                                                      features=feat0)
+                        )
 
                     #mask.show()
                     #frame.show()
