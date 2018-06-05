@@ -17,6 +17,7 @@ class TellGANModel(BaseModel):
 
         BaseModel.initialize(self, opt)
 
+        ###### Basic Parameters ######
         self.feature_size = 32
         self.lstm_in_dim = (self.feature_size, self.feature_size)
         self.lstm_in_nc = 257
@@ -25,10 +26,14 @@ class TellGANModel(BaseModel):
         self.lstm_out_nc = [256]
         self.lstm_nlayers = 1 # too shallow?
         self.lstm_kernel_size = (3, 3)
+
+        ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'WordUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
-        self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netPredictor = networks.NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
+        #self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        #self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
+        #self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        
 
         # Load Dictionary
         self.dic_size = 20
@@ -43,6 +48,7 @@ class TellGANModel(BaseModel):
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
 
+
             self.netD_lstm = networks.define_D(opt.output_nc, opt.ndf, 'lstm_dis', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
             self.netD_pair = networks.define_D(opt.output_nc, opt.ndf, 'basic', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
 
@@ -55,9 +61,10 @@ class TellGANModel(BaseModel):
         if not self.isTrain or opt.continue_train:
             which_epoch = opt.which_epoch
             self.load_network(self.netG, 'WordUnet', which_epoch)
-            self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
-            self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
-            self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
+            self.load_network(self.netPredictor, 'Predictor', which_epoch)
+            #self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
+            #self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
+            #self.load_network(self.netImgDecoder, 'ImgDecoder', which_epoch)
             # self.load_network(self.netWordEmbed, 'WordEmbed', which_epoch)
 
             if self.isTrain: 
@@ -72,7 +79,8 @@ class TellGANModel(BaseModel):
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(
-                itertools.chain(self.netG.parameters(), self.netImgEncoder.parameters(), self.netImgLSTM.parameters(), self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+                itertools.chain(self.netG.parameters(), self.netPredictor.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+                #itertools.chain(self.netG.parameters(), self.netImgEncoder.parameters(), self.netImgLSTM.parameters(), self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
                 #itertools.chain(self.netImgEncoder.parameters(), self.netImgLSTM.parameters(),self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D_lstm = torch.optim.Adam(self.netD_lstm.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D_pair = torch.optim.Adam(self.netD_pair.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -90,9 +98,10 @@ class TellGANModel(BaseModel):
 
         print('---------- Networks initialized -------------')
         networks.print_network(self.netG)
-        networks.print_network(self.netImgEncoder)
-        networks.print_network(self.netImgLSTM)
-        networks.print_network(self.netImgDecoder)
+        networks.print_network(self.netPredictor)
+        #networks.print_network(self.netImgEncoder)
+        #networks.print_network(self.netImgLSTM)
+        #networks.print_network(self.netImgDecoder)
         # networks.print_network(self.netWordEmbed)
         if self.isTrain:
             networks.print_network(self.netD_lstm)
@@ -409,7 +418,7 @@ class TellGANModel(BaseModel):
             # G
             self.optimizer_G.zero_grad()
             self.backward_G()
-            self.optimizer_G.step()
+            self.optimizer_G.step() 
 
             # D_word
             #self.optimizer_D_lstm.zero_grad()
