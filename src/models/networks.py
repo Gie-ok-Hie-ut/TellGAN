@@ -818,6 +818,7 @@ class PixelDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
         else:
             return self.net(input)
+
 class LSTMDiscriminator(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=2):
         super(LSTMDiscriminator, self).__init__()
@@ -835,6 +836,19 @@ class LSTMDiscriminator(nn.Module):
         self.hidden = self.init_hidden()
 
         
+    def init_hidden(self):
+        # Before we've done anything, we dont have any hidden state.
+        # Refer to the Pytorch documentation to see exactly
+        # why they have this dimensionality.
+        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
+        return (torch.zeros(self.num_layers, 1, self.hidden_size).cuda(),
+                torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
+
+    def forward(self, input):
+            lstm_in = self.in_layer(input)
+            pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
+            out = pred_seq[-1]
+            return out
 
 
 class NextFeaturesForWord(nn.Module):
@@ -845,7 +859,7 @@ class NextFeaturesForWord(nn.Module):
         self.num_layers = num_layers
 
         self.input_seq = [
-            nn.Linear(input_size,input_size),
+            nn.Linear(input_size,input_size)
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]

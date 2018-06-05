@@ -52,7 +52,8 @@ class TellGANModel(BaseModel):
             use_sigmoid = opt.no_lsgan
 
 
-            self.netD_lstm = networks.define_D(opt.output_nc, opt.ndf, 'lstm_dis', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
+            #self.netD_lstm = networks.define_D(opt.output_nc, opt.ndf, 'lstm_dis', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
+            self.netD_lstm = networks.LSTMDiscriminator(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
             self.netD_pair = networks.define_D(opt.output_nc, opt.ndf, 'basic', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
 
             #self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.which_model_netD, opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
