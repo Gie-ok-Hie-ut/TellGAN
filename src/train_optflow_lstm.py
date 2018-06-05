@@ -135,7 +135,9 @@ def get_arguments():
     parser.add_argument("--continue", action="store_true", dest="isContinue", default=False,
                         help="Continue Training, loads model, use with --ep-start and --vid-start")
     parser.add_argument("--mouth", action="store_true", dest="mouthonly", default=False,
-                        help="use mouth features only")
+                        help="localize mouth features only")
+    parser.add_argument("--all-feat", action="store_true", dest="allFeatures", default=False,
+                        help="Train and test using all features")
     parser.add_argument("--localize", action="store_true", dest="localize", default=False,
                         help="localize")
     parser.add_argument("--dataroot", action=FullPaths, type=is_dir, dest="dataroot", default="./",
@@ -231,7 +233,7 @@ if __name__ == '__main__':
     save_freq=20
 
     # number of xy feature points (xyxyxyxyxyxyxy...)
-    nFeaturePoints = 68 if isMouthOnly is False else 20
+    nFeaturePoints = 20 #68 if isMouthOnly is False else 20
 
 
     toTensor = transforms.ToTensor()
@@ -308,6 +310,7 @@ if __name__ == '__main__':
                     optimizer_G.zero_grad()
 
                 (img, trans) = frame
+                mat_img = opticalFlow.pilToMat(img)
                 imgT = toTensor(img)
 
                 if trans is None:
@@ -323,11 +326,27 @@ if __name__ == '__main__':
 
                 feat0 = None
                 if islocalize:
-                    frame, mask, feat0 = localizer.localize(opticalFlow.pilToMat(img),mouthonly=isMouthOnly)
+                    # Localize/scale the face and return feature points for new image size
+                    localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=isMouthOnly)
+
+                    # We only want to use the mouth landmarks
+                    if not isMouthOnly:
+                        feat0 = opticalFlow.extractMouthFeatures(feat0)
+
+                    # localizedFrame is PIL image
+                    pil_localizedFrame = opticalFlow.matToPil(localizedFrame)
+
+                    # Create mask from features, convert to PIL
+                    mask = opticalFlow.matToPil(
+                        opticalFlow.create_mask(size=localizedFrame.shape[0:2],
+                                                features=feat0)
+                    )
+
                     #mask.show()
                     #frame.show()
                 else:
-                    feat0, mask = opticalFlow.getFeatureMask(opticalFlow.pilToMat(img), mouthonly=isMouthOnly)
+                    # Not localizing, just return mask and features unchanged
+                    feat0, mask = opticalFlow.getFeatureMask(mat_img, mouthonly=isMouthOnly)
 
                 if feat0 is None or nFeaturePoints > feat0.shape[0]:
                     shape = None if feat0 is None else feat0.shape
@@ -337,11 +356,12 @@ if __name__ == '__main__':
                     word_seq=None
                     continue
 
-                #normalize
+                #normalize between 0 and 1
                 feat0_norm = feat0.copy()
                 feat0_norm[:,:,1] /= face_size[0]
                 feat0_norm[:,:,0] /= face_size[1]
 
+                # Flatten 2D (x,y) coords to 1-D [xyxyxy]
                 featTB4 = Variable(torch.from_numpy(feat0_norm))
                 featT = featTB4.view(featTB4.numel())
 
@@ -384,7 +404,9 @@ if __name__ == '__main__':
                     pred_featT2d[:,:,1] *= (face_size[0])
                     pred_featT2d[:,:,0] *= (face_size[1])
                     pred_feat = pred_featT2d.data.cpu().numpy()
-                    pred_mask = opticalFlow.create_mask((mask.size[1],mask.size[0]), pred_feat)
+                    pred_mask = opticalFlow.create_mask( size=(mask.size[1],mask.size[0]),
+                                                         features=pred_feat)
+
                     pil_pred_mask = opticalFlow.matToPil(pred_mask)
                     sample_frames.append(np.concatenate((mask.copy(), pil_pred_mask.copy()), axis=1))
 

@@ -56,8 +56,8 @@ class LocalizeFace(object):
         if self.predictor_path is None:
             return self.naive_crop(img)
 
-        localized, mask, fpoints = self.localize(img, self.isMouthOnly)
-        return localized
+        localized, fpoints = self.localize(img, self.isMouthOnly)
+        return self.detector.matToPil(localized)
 
 
     def localize(self, frame, mouthonly=False):
@@ -124,13 +124,8 @@ class LocalizeFace(object):
         fpoints_norm = (fpoints_of * normalize_ratio).astype(np.int)
         fpoints_norm[:,:,1] -= object_t
         fpoints_norm[:,:,0] -= object_l
-        localized_mask = self.detector.create_mask((localized.shape[:2]), fpoints_norm)
 
-        #localized_mask = resized_mask[object_t:object_b, object_l:object_r]
-
-        #return self.detector.matToPil(localized), self.detector.matToPil(localized_mask), fpoints_norm
-        return self.detector.matToPil(localized), self.detector.matToPil(localized_mask), fpoints_norm.astype(np.float32)
-
+        return localized, fpoints_norm.astype(np.float32)
 
 
     def naive_crop(self, img):
@@ -250,7 +245,7 @@ class FeaturePredictor(object):
 
         features1 = features1.reshape(-1,1,2) if features1 is not None else None
 
-        mask = self.create_mask((gray1.shape[:2]), features1)
+        mask = self.create_mask(size=(gray1.shape[:2]), features=features1)
 
         return features1, self.matToPil(mask)
 
@@ -259,7 +254,7 @@ class FeaturePredictor(object):
         gray0 = cv2.cvtColor(pil0, cv2.COLOR_BGR2GRAY)
         features0 = self.getFeaturePoints(gray0, mouthonly)
 
-        mask = self.create_mask((gray0.shape[:2]), features0)
+        mask = self.create_mask(size=(gray0.shape[:2]), features=features0)
         return features0, self.matToPil(mask)
 
 
