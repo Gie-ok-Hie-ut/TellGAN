@@ -818,6 +818,23 @@ class PixelDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
         else:
             return self.net(input)
+class LSTMDiscriminator(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers=2):
+        super(LSTMDiscriminator, self).__init__()
+
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.input_seq = [
+            nn.Linear(hidden_size,hidden_size)
+        ]
+
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
+        self.in_layer - nn.Sequential(*self.input_seq)
+
+        self.hidden = self.init_hidden()
+
+        
 
 
 class NextFeaturesForWord(nn.Module):
