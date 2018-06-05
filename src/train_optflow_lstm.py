@@ -423,7 +423,7 @@ if __name__ == '__main__':
 
                 #mask.save("mask_{}.png".format(frame_idx))
                 if isTrain:
-                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0
+                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
                 else:
                     prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
                 #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
