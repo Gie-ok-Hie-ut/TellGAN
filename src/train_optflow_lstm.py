@@ -300,6 +300,8 @@ if __name__ == '__main__':
             #word_seq = None
             prev_mask = None
             prev_frame = None
+            prev_pred_featT = None
+            pil_pred_mask = None
             vid_loss = []
             #vidWriter = create_video(vid_path=vid_path.format(vid_idx), vid_idx=vid_idx, save_freq=20)
             sample_frames = []
@@ -367,13 +369,19 @@ if __name__ == '__main__':
                 # INitialize the input with ground truth only
                 if init_tensor == True or last_word is not trans:
                     #hidden_state = model.init_hidden()
-                    prev_feat_seq = torch.cat((transT, featT.unsqueeze(0)),0)
-                    #print("Reinitialize Input: init:{0} | last:{1} | cur:{2} | seq:{3}"
-                    #      .format(init_tensor, last_word, trans, prev_feat_seq.size()))
+                    if isTrain or prev_feat_seq is None or predMask is None:
+                        init_feature = featT.unsqueeze(0)
+                        predMask = mask
+                    else:
+                        init_feature = prev_feat_seq[-1].unsqueeze(0)
+                        predMask = pil_pred_mask
+
+                    prev_feat_seq = torch.cat((transT, init_feature), 0)
+
                     init_tensor = False
                     last_word = trans
                     if vid_idx % vid_save_freq == 0:
-                        sample_frames.append(np.concatenate((mask.copy(), mask.copy()), axis=1))
+                        sample_frames.append(np.concatenate((mask.copy(), predMask.copy()), axis=1))
                     continue
 
                 #if word_seq is not None:
@@ -415,7 +423,7 @@ if __name__ == '__main__':
 
                 #mask.save("mask_{}.png".format(frame_idx))
                 if isTrain:
-                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0)
+                    prev_feat_seq = torch.cat((prev_feat_seq, featT.unsqueeze(0)), 0
                 else:
                     prev_feat_seq = torch.cat((prev_feat_seq, pred_featT.cpu()), 0)
                 #print("Sequence Size: vid: {0} | word:{1}".format(prev_img_seq.size(), word_seq.size()))
@@ -428,6 +436,7 @@ if __name__ == '__main__':
                 # Setup next iteration
                 #prev_frame = img
                 last_word = trans
+                prev_pred_featT = pred_featT.cpu()
                 #prev_mask = mask
 
             if vid_idx % vid_save_freq == 0:
