@@ -34,7 +34,7 @@ class TellGANModel(BaseModel):
         hidden_layers=3
 
         ###### Network setting ######
-        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet2',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         self.netPredictor = networks.NextFeaturesForWord(input_size=(self.feature_size*2),
                                                          hidden_size=self.feature_size*2,
                                                          num_layers=self.lstm_nlayers)
@@ -394,6 +394,9 @@ class TellGANModel(BaseModel):
         self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
         #self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
 
+        self.img_concat = torch.cat((self.img_init,self.lnmk_cur_imgT),0)
+        self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda()) # Train focus on Face Generator
+
         # Stack After
         self.lstm_stack2 = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()),0)
         self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_cur.unsqueeze(0)), 0)
@@ -418,9 +421,9 @@ class TellGANModel(BaseModel):
         # Loss Weight
         weight_G_word = 1
         weight_G_lnmk = 1
-        weight_G_img = 1
+        weight_G_pair = 2
         weight_img_idt = 1
-        weight_lnmk_idt = 2
+        weight_lnmk_idt = 1
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
@@ -428,7 +431,7 @@ class TellGANModel(BaseModel):
         
         #self.loss_G_word = self.criterionGAN(self.netD_lstm(self.dis_word_fake), True) * weight_G_word
         self.loss_G_lnmk = self.criterionGAN(self.netD_lstm(self.dis_lnmk_fake.cuda()), True) * weight_G_lnmk
-        self.loss_G_pair = self.criterionGAN(self.netD_pair(self.dis_pair_fake.cuda()), True) * weight_G_img
+        self.loss_G_pair = self.criterionGAN(self.netD_pair(self.dis_pair_fake.cuda()), True) * weight_G_pair
 
         #self.loss_G = self.criterionGAN(self.netD(self.img_predict), True) * weight_G
         #self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G

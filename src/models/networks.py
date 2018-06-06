@@ -208,6 +208,8 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'LandmarkUnet':
         netG = LandmarkUnetGenerator(input_nc, output_nc)
+    elif which_model_netG == 'LandmarkUnet2':
+        netG = UnetGenerator(input_nc+1, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     if len(gpu_ids) > 0:
@@ -808,6 +810,12 @@ class SimpleLSTMDiscriminator(nn.Module):
         self.in_layer = nn.Sequential(*self.input_seq)
 
         self.hidden = self.init_hidden()
+
+        self.output_seq = [
+            nn.Linear(hidden_size,hidden_size)
+        ]
+
+        self.out_layer == nn.Sequential(*self.output_seq)
 
         
     def init_hidden(self):
