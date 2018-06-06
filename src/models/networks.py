@@ -206,8 +206,8 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
-    elif which_model_netG == 'WordUnet':
-        netG = WordUnetGenerator(input_nc, output_nc)
+    elif which_model_netG == 'LandmarkdUnet':
+        netG = LandmarkUnetGenerator(input_nc, output_nc)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
     if len(gpu_ids) > 0:
@@ -515,9 +515,9 @@ class ResnetBlock(nn.Module):
 # Based on this code
 # https://github.com/milesial/Pytorch-UNet/blob/master/unet
 
-class WordUnetGenerator(nn.Module):
+class LandmarkUnetGenerator(nn.Module):
     def __init__(self,dim_in,dim_out):
-        super(WordUnetGenerator,self).__init__()
+        super(LandmarkUnetGenerator,self).__init__()
 
         self.same1 = conv_same(dim_in, 16) #3/256/256 -> 16/256/256
         self.down1 = conv_down(16, 32)
@@ -558,7 +558,9 @@ class WordUnetGenerator(nn.Module):
 
         x8 = self.same2(x7)
 
-        return x8
+        x9 = x8 + img
+
+        return x9
 
 
 class conv_double(nn.Module): # same size W/H
