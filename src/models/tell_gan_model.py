@@ -349,9 +349,12 @@ class TellGANModel(BaseModel):
 
     def backward_G_finetune(self): # Fine-tune to the initialization Frame
         self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_init, size=(self.img_init.size(1), self.img_init.size(2)))
-        self.img_init_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_init_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
+
+        self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_init_imgT.cuda()), 0)
+        self.img_init_predict = self.netG(self.img_concat.unsqueeze(0).cuda()) # Train focus on Face Generator
 
         self.loss_img_idt = self.criterionIdt(self.img_init_predict, self.img_init.unsqueeze(0)) * 1
+
         self.loss_img_idt.backward(retain_graph=True)
 
 
@@ -391,10 +394,10 @@ class TellGANModel(BaseModel):
         # Final
         self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_cur.size(1), self.img_cur.size(2)))
         self.lnmk_predict_imgT, self.lnmk_predict_img = self.landmarkToImg(self.lnmk_predict, size=(self.img_cur.size(1), self.img_cur.size(2)))
-        self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
+        #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
         #self.img_predict = self.netG(self.img_init.unsqueeze(0), self.lnmk_predict.unsqueeze(0))
 
-        self.img_concat = torch.cat((self.img_init,self.lnmk_cur_imgT),0)
+        self.img_concat = torch.cat((self.img_init.cuda(),self.lnmk_cur_imgT.cuda()),0)
         self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda()) # Train focus on Face Generator
 
         # Stack After
@@ -421,8 +424,8 @@ class TellGANModel(BaseModel):
         # Loss Weight
         weight_G_word = 1
         weight_G_lnmk = 1
-        weight_G_pair = 2
-        weight_img_idt = 1
+        weight_G_pair = 3
+        weight_img_idt = 2
         weight_lnmk_idt = 1
 
         # Loss Calculate
