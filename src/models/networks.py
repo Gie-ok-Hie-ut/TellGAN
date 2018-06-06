@@ -527,7 +527,7 @@ class LandmarkUnetGenerator(nn.Module):
         self.up1 = conv_up(128,64,1,64)
         self.up2 = conv_up(64,32,1,32)
         self.up3 = conv_up(32,16,1,32)
-        self.same2 = conv_same(32, dim_out)
+        self.same2 = conv_same(32 + 3, dim_out)
 
         self.pool = self.pool_layer()
 
@@ -556,9 +556,9 @@ class LandmarkUnetGenerator(nn.Module):
         x6 = self.up2(x5,x2,lm1) # 64/64/64, 128/128/32, 128/128/3 -> 128/128/32
         x7 = self.up3(x6,x1,lm) # 128/128/32, 256/256/16, 256/256/3 -> 256/256/32
 
-        x8 = self.same2(x7)
+        x8 =  torch.cat((x7, img),0)
 
-        x9 = x8 + img
+        x9 = self.same2(x8)
 
         return x9
 
