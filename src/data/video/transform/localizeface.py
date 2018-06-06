@@ -18,7 +18,6 @@ class LocalizeFace(object):
         For GRID each frame is (288, 360, 3) by default, the height/width options force the bounding boxes
         to be a specific size.
         """
-        predictor_path = 'shape_predictor_68_face_landmarks.dat'
         self.detector = FeaturePredictor(predictor_path)
         self.predictor_path = predictor_path
         self.height = height
@@ -215,7 +214,7 @@ class FeaturePredictor(object):
         self.feature_model = feature_model
         self.face_detector = dlib.get_frontal_face_detector()
 
-        self.feature_detector = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+        self.feature_detector = dlib.shape_predictor(feature_model)
 
         # Parameters for lucas kanade optical flow
         self.lk_params = dict(winSize=(15, 15),

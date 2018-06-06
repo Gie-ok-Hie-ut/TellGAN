@@ -117,7 +117,7 @@ class Visualizer():
     def print_current_errors(self, epoch, i, errors, t, t_data):
         message = '(epoch: %d, iters: %d, time: %.3f, data: %.3f) ' % (epoch, i, t, t_data)
         for k, v in errors.items():
-            message += '%s: %.3f ' % (k, v)
+            message += '%s: %.4f ' % (k, v)
 
         print(message)
         with open(self.log_name, "a") as log_file:
