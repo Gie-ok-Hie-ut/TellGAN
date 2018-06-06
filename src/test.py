@@ -9,6 +9,7 @@ from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
 from torchvision import transforms
 import skvideo.io
+from PIL import Image
 import numpy as np
 
 
@@ -65,6 +66,9 @@ if __name__ == '__main__':
             t_data = iter_start_time - iter_data_time
 
             (img, word) = frame
+
+            #img = Image.open("/home/jake//classes/cs703/Project/choi.jpg")
+
             ############ Landmarks and localized frame ###############
             mat_img = landmarkSuite.pilToMat(img)
             localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=False)
@@ -73,7 +77,7 @@ if __name__ == '__main__':
             exptected_nlmks = 68
             if feat0 is None or exptected_nlmks > feat0.shape[0]:
                 shape = None if feat0 is None else feat0.shape
-                print("Missing landmarks, Initializing State: {}".format(shape))
+                print("Initializing State: {}".format(shape))
                 init_tensor = True
                 continue
 
