@@ -31,12 +31,14 @@ class TellGANModel(BaseModel):
         self.lstm_out_nc = [256]
         self.lstm_nlayers = 3 # too shallow?
         self.lstm_kernel_size = (3, 3)
-        hidden_layers=3
+        hidden_layers=5
+        lstm_input_size=self.feature_size*2
 
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet2',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netPredictor = networks.NextFeaturesForWord(input_size=(self.feature_size*2),
-                                                         hidden_size=self.feature_size*2,
+        self.netPredictor = networks.NextFeaturesForWord(input_size=lstm_input_size,
+                                                         hidden_size=lstm_input_size*2,
+                                                         output_size=lstm_input_size,
                                                          num_layers=self.lstm_nlayers)
         #self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         #self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
@@ -266,7 +268,7 @@ class TellGANModel(BaseModel):
                                                                                    size=(self.img_cur.size(1),
                                                                                          self.img_cur.size(2)))
 
-                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_predict_imgT.cuda()), 0)
+                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_cur_imgT.cuda()), 0)
                 self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),

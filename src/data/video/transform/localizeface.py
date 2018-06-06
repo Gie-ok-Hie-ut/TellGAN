@@ -267,8 +267,8 @@ class FeaturePredictor(object):
 
         features_ = np.copy(features).astype(np.int)
 
-        #features_ = features_[features_[:,0,0] < img.shape[0]]
-        #features_ = features_[features_[:,0,1] < img.shape[1]]
+        features_ = features_[features_[:,0,1] < size[0]]
+        features_ = features_[features_[:,0,0] < size[1]]
 
         mask[features_[:,:,1], features_[:,:,0]] = 255
 
@@ -297,13 +297,14 @@ class FeaturePredictor(object):
         if features is None:
             return None
 
-        for i, part in enumerate(features.parts()):
+        feat_points = None
+        for part in features.parts():
             fpoint = np.asfarray([part.x, part.y])
             # filter if index values larger than image
             if (fpoint < 0).any() or fpoint[0] >= img_grey.shape[1] or fpoint[1] >= img_grey.shape[0]:
                 print("ignoring point: {} | imgsize: {}".format(fpoint,img_grey.shape))
                 continue
-            if i is 0:
+            if feat_points is None:
                 feat_points = fpoint
             else:
                 feat_points = np.vstack((feat_points, fpoint))
