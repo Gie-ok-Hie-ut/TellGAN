@@ -2,7 +2,7 @@ from torch.autograd import Variable
 from collections import OrderedDict
 import util.util as util
 from .base_model import BaseModel
-from . import networks
+from . import networks(not isSameWord)
 
 
 class TestModel(BaseModel):

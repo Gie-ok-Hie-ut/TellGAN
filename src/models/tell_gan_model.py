@@ -73,7 +73,7 @@ class TellGANModel(BaseModel):
 
         if not self.isTrain or opt.continue_train:
             which_epoch = opt.which_epoch
-            self.load_network(self.netG, 'LandmarkdUnet', which_epoch)
+            self.load_network(self.netG, 'LandmarkUnet', which_epoch)
             self.load_network(self.netPredictor, 'Predictor', which_epoch)
             #self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
             #self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
@@ -109,7 +109,8 @@ class TellGANModel(BaseModel):
             for optimizer in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
         else:
-             self.criterionTest = torch.nn.MSELoss()
+            self.criterionTest = torch.nn.MSELoss()
+            self.criterionTest.cuda()
 
         print('---------- Networks initialized -------------')
         networks.print_network(self.netG)
@@ -183,9 +184,10 @@ class TellGANModel(BaseModel):
 
         return np2tensor_sq2 # 1*1*38*38 (b*c*w*h)
 
-    def test(self, init_tensor):
+    def test(self, init_tensor, wordChage=False):
 
         with torch.no_grad():
+            self.forward()
             self.img_input = Variable(self.input_frame, volatile=True)
 
             self.word_tensor = self.Word2Tensor(self.input_transcription, dim=self.feature_size*2)
@@ -201,22 +203,25 @@ class TellGANModel(BaseModel):
                 self.word_init = self.word_input
                 self.lnmk_cur = self.lnmk_input
 
-                if self.lstm_stack is not None and (self.lstm_stack[0] - self.word_init != 0):
-                    self.lstm_stack = torch.cat((self.word_init, self.lstm_stack[-1].unsqueeze(0)), 0)
-                else:
-                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
-
-
-
-
-                self.img_enc_stack = self.img_cur_enc
-                self.word_stack = 0  # Is it okay to use?
-
+                self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
                 # Redundant
-                self.img_predict = self.img_input.unsqueeze(0)
+                self.img_predict = self.img_input.unsqueeze(0).cuda()
+                self.img_predict_save = self.img_predict.data
+                self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
+
+                self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
+                                                                           size=(self.img_cur.size(1),
+                                                                                 self.img_cur.size(2)))
+                self.lnmk_predict_img = self.lnmk_cur_img
+
+                # Save
+                self.img_init_save = self.img_init.data
+                self.img_cur_save = self.img_input.data
                 self.img_predict_save = self.img_predict.data
 
+                self.lnmk_cur_save = self.lnmk_cur_img
+                self.lnmk_predict_save = self.lnmk_predict_img
             else:
                 '''
                 ' When Tensor has already been initialized, we must predict the next frame with the
@@ -226,38 +231,42 @@ class TellGANModel(BaseModel):
                 ' is then stacked onto the image encoding stack for the next iteration. The predicted 
                 ' encoding is also fed into the decoder to produce the acutual frame.
                 '''
-                # Predict Current Img
+                if wordChage:
+                    # Reinitialize the word->feature lstm with prev predicted landmarks
+                    self.lstm_stack = torch.cat((self.word_init, self.lstm_stack[-1].unsqueeze(0)), 0)
+
                 self.img_cur = self.img_input
                 self.word_cur = self.word_input
 
-                # Temporalily Added to make a form (1 * 3 * 150 * 150) instead of (3 * 150 * 150)
-                self.img_cur_enc = self.netImgEncoder(self.img_cur.unsqueeze(0))
-                self.word_cur_enc = self.ExpandTensor(self.word_cur, self.feature_size, self.feature_size)
+                # Predict Current Landmarks
+                lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+                self.lnmk_predict = self.netPredictor(lstm_input.detach())
 
-                # Stack Before
-                #self.img_enc_stack
-                if self.word_flag == True:
-                    self.word_stack = self.word_cur_enc
-                    self.word_flag = False
-                else:
-                    self.word_stack = torch.cat((self.word_stack, self.word_cur_enc), 0)
+                # Generate changed Face from landmarks
+                self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
+                                                                           size=(self.img_cur.size(1),
+                                                                                 self.img_cur.size(2)))
+                self.lnmk_predict_imgT, self.lnmk_predict_img = self.landmarkToImg(self.lnmk_predict,
+                                                                                   size=(self.img_cur.size(1),
+                                                                                         self.img_cur.size(2)))
 
-                self.convlstm_input = torch.cat((self.img_enc_stack, self.word_stack), 1)  # Stack Input
-                self.convlstm_output = self.netImgLSTM(self.convlstm_input)
+                self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
+                                             self.lnmk_cur_imgT.unsqueeze(0).cuda())  # Train focus on Face Generator
 
-                # Stack predicted image encoding After
-                self.img_enc_stack = torch.cat((self.img_enc_stack, self.convlstm_output.unsqueeze(0)), 0)
-                # self.word_stack
+                # Stack predicted landmarks encoding After
+                self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()), 0)
 
-
-                self.img_predict = self.netImgDecoder(self.img_init.unsqueeze(0), self.convlstm_output.unsqueeze(0))
-
+                # Save
                 self.img_init_save = self.img_init.data
                 self.img_cur_save = self.img_input.data
                 self.img_predict_save = self.img_predict.data
 
+                self.lnmk_cur_save = self.lnmk_cur_img
+                self.lnmk_predict_save = self.lnmk_predict_img
+
             self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
-            return util.tensor2im(self.img_predict_save)
+            self.loss_test_lmk = self.criterionTest(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)).data[0]
+            return util.tensor2im(self.img_predict_save),
 
 
     # get image paths
@@ -349,16 +358,18 @@ class TellGANModel(BaseModel):
         self.img_predict_save = self.img_init_predict.data
         self.loss_img_idt = self.loss_img_idt.data[0]
 
-
-    def landmarkToImg(self, lnmk, size=(128,128)):
-        if lnmk.size(-1) < 40:
-            print lnmk.size
-        lmkT2d = lnmk.clone().view(self.feature_size,1,2)
+    def landmarkTToNp(self, lnmk, size=(128,128)):
+        lmkT2d = lnmk.clone().view(self.feature_size, 1, 2)
 
         # denormalize
-        lmkT2d[:,:,1] *= size[0]
-        lmkT2d[:,:,0] *= size[1]
+        lmkT2d[:, :, 1] *= size[0]
+        lmkT2d[:, :, 0] *= size[1]
         np_lmk = lmkT2d.data.cpu().numpy()
+
+        return np_lmk
+
+    def landmarkToImg(self, lnmk, size=(128,128)):
+        np_lmk = self.landmarkTToNp(lnmk, size)
         lnmk_img = self.landmarkSuite.create_mask(size, np_lmk)
         pil_lnmk_img = self.landmarkSuite.matToPil(lnmk_img)
 
@@ -523,7 +534,7 @@ class TellGANModel(BaseModel):
 
 
     def save(self, label):
-        self.save_network(self.netG, 'WordUnet', label, self.gpu_ids)
+        self.save_network(self.netG, 'LandmarkUnet', label, self.gpu_ids)
         self.save_network(self.netPredictor, 'Predictor', label, self.gpu_ids)
         #self.save_network(self.netImgEncoder, 'ImgEncoder', label, self.gpu_ids)
         #self.save_network(self.netImgLSTM, 'ImgLSTM', label, self.gpu_ids)

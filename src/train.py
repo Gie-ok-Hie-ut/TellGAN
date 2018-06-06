@@ -1,3 +1,4 @@
+import os
 import time
 from options.train_options import TrainOptions
 from data import CreateDataLoader
@@ -6,6 +7,7 @@ from util.visualizer import Visualizer
 from data.video.transform.localizeface import LocalizeFace, FeaturePredictor
 from data.grid_loader import GRID
 from torchvision import transforms
+import skvideo.io
 import numpy as np
 
 
@@ -19,7 +21,9 @@ if __name__ == '__main__':
     face_size = (128, 128)
     toTensor=transforms.ToTensor()
     face_predictor_path = './shape_predictor_68_face_landmarks.dat'
-    localizer = LocalizeFace(height=face_size[0], width=face_size[1], predictor_path=face_predictor_path, mouthonly=True)
+    localizer = LocalizeFace(height=face_size[0], width=face_size[1], predictor_path=face_predictor_path,
+                             mouthonly=True)
+
     frame_transforms = transforms.Compose([
     	#localizer,
         #LocalizeFace(height=face_size,width=face_size),
@@ -93,7 +97,7 @@ if __name__ == '__main__':
 
 				#######################################
 
-                # Exception - frame size
+                # Exception vs frame size
                 if localizedFrame.shape[1] is not face_size[0] or localizedFrame.shape[0] is not face_size[1]:
                     print("[Incomplete Frame] {0} Size: {1}".format(frame_idx, img.size))
                     init_tensor=True
