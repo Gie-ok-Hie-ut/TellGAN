@@ -833,21 +833,33 @@ class SimpleLSTMDiscriminator(nn.Module):
             return out
 
 
+    '''
 class NextFeaturesForWord(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=2):
+    def __init__(self, input_size, hidden_size, output_size=None, num_layers=5):
         super(NextFeaturesForWord, self).__init__()
+
+        output_size =  output_size if output_size is not None else hidden_size
 
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
-        self.input_seq = [
-            nn.Linear(input_size,input_size)
+        #self.input_seq = [
+        #    nn.Linear(input_size, hidden_size),
+        #    nn.Dropout(0.5),
+        #    nn.Linear(hidden_size, hidden_size)
+            #nn.ReLU(True),
+            #nn.Sigmoid()
+        #]
+
+        self.output_seq = [
+            nn.Linear(hidden_size, output_size)
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]
 
+        #self.in_layer = nn.Sequential(*self.input_seq)
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
-        self.in_layer = nn.Sequential(*self.input_seq)
+        self.out_layer = nn.Sequential(*self.output_seq)
 
         self.hidden = self.init_hidden()
 
@@ -860,7 +872,59 @@ class NextFeaturesForWord(nn.Module):
                 torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
 
     def forward(self, input):
-        lstm_in = self.in_layer(input)
+        pred_seq, self.hidden = self.lstm(input, self.init_hidden())
+        pred_latent = pred_seq[-1]
+        out = self.out_layer(pred_latent)
+        return out
+
+    '''
+class NextFeaturesForWord(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size=None, num_layers=5):
+        super(NextFeaturesForWord, self).__init__()
+
+        output_size =  output_size if output_size is not None else hidden_size
+
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.input_seq = [
+            nn.Linear(input_size, hidden_size),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, hidden_size)
+            #nn.ReLU(True),
+            #nn.Sigmoid()
+        ]
+
+        self.output_seq = [
+            nn.Linear(hidden_size,output_size)
+            #nn.ReLU(True),
+            #nn.Sigmoid()
+        ]
+
+        self.in_layer = nn.Sequential(*self.input_seq)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers)
+        self.out_layer = nn.Sequential(*self.output_seq)
+
+        self.hidden = self.init_hidden()
+
+    def init_hidden(self):
+        # Before we've done anything, we dont have any hidden state.
+        # Refer to the Pytorch documentation to see exactly
+        # why they have this dimensionality.
+        # The axes semantics are (num_layers, minibatch_size, hidden_dim)
+        return (torch.zeros(self.num_layers, 1, self.hidden_size).cuda(),
+                torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
+
+    def forward(self, input):
+        lstm_in = None
+        for seq in range(0,input.size(0)):
+            seq_enc = self.in_layer(input[seq]).unsqueeze(0)
+            if lstm_in is None:
+                lstm_in = seq_enc
+            else:
+                lstm_in = torch.cat((lstm_in, seq_enc),0)
+
         pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
-        out = pred_seq[-1]
+        pred_latent = pred_seq[-1]
+        out = self.out_layer(pred_latent)
         return out

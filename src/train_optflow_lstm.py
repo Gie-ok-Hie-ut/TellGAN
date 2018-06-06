@@ -193,12 +193,13 @@ def Word2Tensor(word, dictionary, dic_size, dim=1):
 # Normalize and de-normalize
 def normalize(data_points, img_size, scale_down=True):
     if(scale_down==True):
-        data_points[:,0] = [[float(data[0])/img_size[1], float(data[1])/faceimg_size_size[0]] for data in data_points[:,0]]
+        data_points[:,0] = [[float(data[0])/img_size[1], float(data[1])/img_size[0]] for data in data_points[:,0]]
     else:
         data_points[:] = [[int(data[0])*img_size[1], int(data[1])*img_size[0]] for data in data_points[:,0]]
 
 if __name__ == '__main__':
 
+    print("Pytorch v{}".format(torch.__version__))
     # Setup input args
     args = get_arguments()
 
@@ -270,19 +271,23 @@ if __name__ == '__main__':
 
     # Setup word embedding
     word_dim = nFeaturePoints*2
-    nVocab = 100
+    nVocab = 30
     word_to_ix = {}
 
     try:
-        word_to_ix = np.load('word_embedding.npy').item()
+        word_to_ix = np.load('grid_embedding.npy').item()
         print("[Dictionary] Loading Existing Embedding Dictionary")
     except IOError as e:
         word_to_ix = {'default': 0}
         print("[Dictionary] Building New Word Embedding Dictionary")
 
     # Initialize Models
-    hidden_layers=3
-    model = NextFeaturesForWord(input_size=(nFeaturePoints*2), hidden_size=nFeaturePoints*2, num_layers=hidden_layers)
+    hidden_layers=5
+    input_size = nFeaturePoints*2
+    model = NextFeaturesForWord(input_size=input_size,
+                                hidden_size=2*input_size,
+                                output_size=input_size,
+                                num_layers=hidden_layers)
 
     if isTrain is False or isContinue is True:
         which_epoch = 'latest'
@@ -348,17 +353,20 @@ if __name__ == '__main__':
                 # Add Word to dictionary if not seen befor
                 if trans not in word_to_ix:
                     if len(word_to_ix) > nVocab:
+                        #print("Skipping word: ", trans)
                         init_tensor = True
                         continue
                     word_to_ix[trans] = len(word_to_ix)
 
                 # Init to None for checking success
                 feat0 = None
+
+                exptected_nlmks = 68 if isMouthOnly is not True else 20
                 if islocalize:
                     # Localize/scale the face and return feature points for new image size
                     localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=isMouthOnly)
 
-                    if feat0 is not None:
+                    if feat0 is not None and exptected_nlmks == feat0.shape[0]:
                         # We only want to use the mouth landmarks
                         if not isMouthOnly:
                             feat0 = landmarkSuite.extractMouthFeatures(feat0)
@@ -378,9 +386,9 @@ if __name__ == '__main__':
                     # Not localizing, just return mask and features unchanged
                     feat0, mask = landmarkSuite.getFeatureMask(mat_img, mouthonly=isMouthOnly)
 
-                if feat0 is None or nFeaturePoints > feat0.shape[0]:
+                if feat0 is None or 20 != feat0.shape[0]:
                     shape = None if feat0 is None else feat0.shape
-                    print("Initializing State: {}".format(shape))
+                    print("Missing landmarks, Initializing State: {}".format(shape))
                     init_tensor=True
                     prev_feat_seq=None
                     word_seq=None
