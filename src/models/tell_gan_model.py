@@ -73,7 +73,7 @@ class TellGANModel(BaseModel):
 
         if not self.isTrain or opt.continue_train:
             which_epoch = opt.which_epoch
-            self.load_network(self.netG, 'WordUnet', which_epoch)
+            self.load_network(self.netG, 'LandmarkdUnet', which_epoch)
             self.load_network(self.netPredictor, 'Predictor', which_epoch)
             #self.load_network(self.netImgEncoder, 'ImgEncoder', which_epoch)
             #self.load_network(self.netImgLSTM, 'ImgLSTM', which_epoch)
@@ -339,14 +339,14 @@ class TellGANModel(BaseModel):
         self.loss_lnmk_idt = 0
 
     def backward_G_finetune(self): # Fine-tune to the initialization Frame
-        self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_init.size(1), self.img_init.size(2)))
-        self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
+        self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_init, size=(self.img_init.size(1), self.img_init.size(2)))
+        self.img_init_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_init_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
 
-        self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_init.unsqueeze(0)) * 1
+        self.loss_img_idt = self.criterionIdt(self.img_init_predict, self.img_init.unsqueeze(0)) * 1
         self.loss_img_idt.backward(retain_graph=True)
 
 
-        self.img_predict_save = self.img_predict.data
+        self.img_predict_save = self.img_init_predict.data
         self.loss_img_idt = self.loss_img_idt.data[0]
 
 
