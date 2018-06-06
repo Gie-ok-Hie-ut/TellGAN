@@ -338,6 +338,18 @@ class TellGANModel(BaseModel):
         self.loss_img_idt = 0
         self.loss_lnmk_idt = 0
 
+    def backward_G_finetune(self): # Fine-tune to the initialization Frame
+        self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_init.size(1), self.img_init.size(2)))
+        self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(), self.lnmk_cur_imgT.unsqueeze(0).cuda()) # Train focus on Face Generator
+
+        self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_init.unsqueeze(0)) * 1
+        self.loss_img_idt.backward(retain_graph=True)
+
+
+        self.img_predict_save = self.img_predict.data
+        self.loss_img_idt = self.loss_img_idt.data[0]
+
+
     def landmarkToImg(self, lnmk, size=(128,128)):
         if lnmk.size(-1) < 40:
             print lnmk.size
@@ -442,6 +454,11 @@ class TellGANModel(BaseModel):
         if init_tensor == True:
             #print("[First Frame Initialization] {0} [Word] {1}".format(init_tensor, self.input_transcription))
             self.backward_G_init()
+
+            for lap in range(0,20):
+                self.optimizer_G.zero_grad()
+                self.backward_G_finetune()
+                self.optimizer_G.step()
         else:
             # G
             self.optimizer_G.zero_grad()
@@ -472,6 +489,7 @@ class TellGANModel(BaseModel):
             #self.optimizer_D_speak.zero_grad()
             #self.backward_D_speak()
             #self.optimizer_D_speak.step()
+
 
 
     def get_current_errors(self):
