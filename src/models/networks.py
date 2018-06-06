@@ -815,7 +815,7 @@ class SimpleLSTMDiscriminator(nn.Module):
             nn.Linear(hidden_size,hidden_size)
         ]
 
-        self.out_layer == nn.Sequential(*self.output_seq)
+        self.out_layer = nn.Sequential(*self.output_seq)
 
         
     def init_hidden(self):
@@ -829,7 +829,7 @@ class SimpleLSTMDiscriminator(nn.Module):
     def forward(self, input):
             lstm_in = self.in_layer(input)
             pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
-            out = pred_seq[-1]
+            out = self.out_layer(pred_seq[-1])
             return out
 
 
