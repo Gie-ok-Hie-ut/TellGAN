@@ -109,8 +109,14 @@ class TellGANModel(BaseModel):
             for optimizer in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
         else:
+            # initialize optimizers
+            self.optimizer_G = torch.optim.Adam(
+                itertools.chain(self.netG.parameters(), self.netPredictor.parameters()))
+
             self.criterionTest = torch.nn.MSELoss()
             self.criterionTest.cuda()
+            self.criterionIdt = torch.nn.MSELoss()  # L1 Loss Okay?
+            self.criterionIdt.cuda()
 
         print('---------- Networks initialized -------------')
         networks.print_network(self.netG)
@@ -186,43 +192,51 @@ class TellGANModel(BaseModel):
 
     def test(self, init_tensor, wordChage=False):
 
-        with torch.no_grad():
-            self.forward()
-            self.img_input = Variable(self.input_frame, volatile=True)
+        self.forward()
 
-            self.word_tensor = self.Word2Tensor(self.input_transcription, dim=self.feature_size*2)
-            self.word_input = Variable(self.word_tensor, volatile=True)
+        self.img_input = Variable(self.input_frame, volatile=True)
 
-            if init_tensor == True:
-                '''
-                ' When tensor is initialized, we just reset the encoder sequence for the LSTM
-                ' to the init frame and return the given frame, as no prediction is needed
-                '''
-                self.img_init = self.img_input
-                self.img_cur = self.img_input
-                self.word_init = self.word_input
-                self.lnmk_cur = self.lnmk_input
+        self.word_tensor = self.Word2Tensor(self.input_transcription, dim=self.feature_size*2)
+        self.word_input = Variable(self.word_tensor, volatile=True)
 
-                self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
+        if init_tensor == True:
+            '''
+            ' When tensor is initialized, we just reset the encoder sequence for the LSTM
+            ' to the init frame and return the given frame, as no prediction is needed
+            '''
+            self.img_init = self.img_input
+            self.img_cur = self.img_input
+            self.word_init = self.word_input
+            self.lnmk_cur = self.lnmk_input
+            self.lnmk_init = self.lnmk_input
 
-                # Redundant
-                self.img_predict = self.img_input.unsqueeze(0).cuda()
-                self.img_predict_save = self.img_predict.data
-                self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
+            self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
-                self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
-                                                                           size=(self.img_cur.size(1),
-                                                                                 self.img_cur.size(2)))
-                self.lnmk_predict_img = self.lnmk_cur_img
+            # Redundant
+            self.img_predict = self.img_input.unsqueeze(0).cuda()
+            self.img_predict_save = self.img_predict.data
+            self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
 
-                # Save
-                self.img_init_save = self.img_init.data
-                self.img_cur_save = self.img_input.data
-                self.img_predict_save = self.img_predict.data
+            self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
+                                                                       size=(self.img_cur.size(1),
+                                                                             self.img_cur.size(2)))
+            self.lnmk_predict_img = self.lnmk_cur_img
 
-                self.lnmk_cur_save = self.lnmk_cur_img
-                self.lnmk_predict_save = self.lnmk_predict_img
-            else:
+            # Save
+            self.img_init_save = self.img_init.data
+            self.img_cur_save = self.img_input.data
+            self.img_predict_save = self.img_predict.data
+
+            self.lnmk_cur_save = self.lnmk_cur_img
+            self.lnmk_predict_save = self.lnmk_predict_img
+
+
+            for lap in range(0,0):
+                self.optimizer_G.zero_grad()
+                self.backward_G_finetune()
+                self.optimizer_G.step()
+        else:
+            with torch.no_grad():
                 '''
                 ' When Tensor has already been initialized, we must predict the next frame with the
                 ' initialized tensors. First we stack the word encodings to tell the network the word 
@@ -234,9 +248,11 @@ class TellGANModel(BaseModel):
                 if wordChage:
                     # Reinitialize the word->feature lstm with prev predicted landmarks
                     self.lstm_stack = torch.cat((self.word_init, self.lstm_stack[-1].unsqueeze(0)), 0)
+                    #self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
                 self.img_cur = self.img_input
                 self.word_cur = self.word_input
+                self.lnmk_cur = self.lnmk_input
 
                 # Predict Current Landmarks
                 lstm_input = self.lstm_stack.unsqueeze(1).cuda()
@@ -250,8 +266,11 @@ class TellGANModel(BaseModel):
                                                                                    size=(self.img_cur.size(1),
                                                                                          self.img_cur.size(2)))
 
-                self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
-                                             self.lnmk_cur_imgT.unsqueeze(0).cuda())  # Train focus on Face Generator
+                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_predict_imgT.cuda()), 0)
+                self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda())  # Train focus on Face Generator
+
+                #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
+                #                             self.lnmk_cur_imgT.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 # Stack predicted landmarks encoding After
                 self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()), 0)
@@ -264,9 +283,9 @@ class TellGANModel(BaseModel):
                 self.lnmk_cur_save = self.lnmk_cur_img
                 self.lnmk_predict_save = self.lnmk_predict_img
 
-            self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
-            self.loss_test_lmk = self.criterionTest(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)).data[0]
-            return util.tensor2im(self.img_predict_save),
+        self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
+        self.loss_test_lmk = self.criterionTest(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)).data[0]
+        return util.tensor2im(self.img_predict_save),
 
 
     # get image paths
