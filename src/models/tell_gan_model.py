@@ -34,7 +34,7 @@ class TellGANModel(BaseModel):
         hidden_layers=3
 
         ###### Network setting ######
-        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'WordUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         self.netPredictor = networks.NextFeaturesForWord(input_size=(self.feature_size*2),
                                                          hidden_size=self.feature_size*2,
                                                          num_layers=self.lstm_nlayers)

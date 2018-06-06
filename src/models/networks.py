@@ -206,7 +206,7 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
-    elif which_model_netG == 'LandmarkdUnet':
+    elif which_model_netG == 'LandmarkUnet':
         netG = LandmarkUnetGenerator(input_nc, output_nc)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
