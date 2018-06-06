@@ -556,7 +556,7 @@ class LandmarkUnetGenerator(nn.Module):
         x6 = self.up2(x5,x2,lm1) # 64/64/64, 128/128/32, 128/128/3 -> 128/128/32
         x7 = self.up3(x6,x1,lm) # 128/128/32, 256/256/16, 256/256/3 -> 256/256/32
 
-        x8 =  torch.cat((x7, img),0)
+        x8 =  torch.cat((x7, img),1)
 
         x9 = self.same2(x8)
 
