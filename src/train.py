@@ -66,8 +66,14 @@ if __name__ == '__main__':
             last_word = None
             # frame is a tuple (frame_img, frame_word)
             for frame_idx, frame in enumerate(video):
+                (img, align) = frame
 
-                (img, word) = frame
+                word = None
+                word_nframes = 0
+                if align is not None:
+                    word = align.word
+                    word_nframes = align.end - align.start
+                    #print(word_nframes)
 
                 # If we have a problem with the video, reinitialize at next best frame
                 if word is None:
@@ -114,7 +120,7 @@ if __name__ == '__main__':
                 	continue
 
                 # Train
-                input = (imgT, word, feat0)
+                input = (imgT, word, feat0, word_nframes)
                 model.set_input(input)
                 model.optimize_parameters(init_tensor)
                 init_tensor=False

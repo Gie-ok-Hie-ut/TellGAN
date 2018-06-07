@@ -48,15 +48,15 @@ class Video(object):
         frame = self.frames[index]
 
         # Get Word for next Frame
-        target = self.transcript.get_word_from_frame(index)
+        target = self.transcript.get_align_from_frame(index)
 
         pil_img = Image.fromarray(frame)
 
         if self.transform is not None:
             pil_img = self.transform(pil_img)
 
-        if self.target_transform is not None:
-            target = self.target_transform(target)
+        #if self.target_transform is not None:
+        #    target = self.target_transform(target)
 
         #print("PIL Tensor",pil_img)
 

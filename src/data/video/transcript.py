@@ -42,18 +42,23 @@ class Transcript(object):
             self.sentence = self.make_sentence(self.aligns)
         return self.sentence
 
-    def get_word_from_frame(self, frame_num):
+    def get_align_from_frame(self, frame_num):
         for align in self.aligns:
             if frame_num >= align.start and frame_num < align.end:
-                return align.word
+                return align
 
         # Transcritps have startFrame and EndFrame Number,
         # We get words from start <= frame < end
         # FIX: last frame needs a transcript, give last word in aligns
         if frame_num == self.last_frame:
-            return self.aligns[-1].word
+            return self.aligns[-1]
 
         return None
+
+    def get_word_from_frame(self, frame_num):
+        align = self.get_align_from_frame(frame_num)
+
+        return align.word if align is not None else None
 
     '''
     # Returns the length of the longest word 

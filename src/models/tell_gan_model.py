@@ -93,6 +93,8 @@ class TellGANModel(BaseModel):
             self.criterionGAN.cuda()
             self.criterionIdt = torch.nn.MSELoss()  # L1 Loss Okay?
             self.criterionGAN.cuda()
+            self.criterionIdt_lnmk = torch.nn.L1Loss()  # L1 Loss Okay?
+            self.criterionIdt_lnmk.cuda()
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(
@@ -112,13 +114,8 @@ class TellGANModel(BaseModel):
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
         else:
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(
-                itertools.chain(self.netG.parameters(), self.netPredictor.parameters()))
-
             self.criterionTest = torch.nn.MSELoss()
             self.criterionTest.cuda()
-            self.criterionIdt = torch.nn.MSELoss()  # L1 Loss Okay?
-            self.criterionIdt.cuda()
 
         print('---------- Networks initialized -------------')
         networks.print_network(self.netG)
@@ -134,7 +131,7 @@ class TellGANModel(BaseModel):
         print('-----------------------------------------------')
 
     def set_input(self, input):
-        (input_frame, input_transcription, input_landmark) = input
+        (input_frame, input_transcription, input_landmark, input_length) = input
 
         if len(self.gpu_ids) > 0:
             input_frame = input_frame.cuda(self.gpu_ids[0], async=True)
@@ -142,6 +139,7 @@ class TellGANModel(BaseModel):
         self.input_frame = input_frame
         self.input_transcription = input_transcription
         self.input_landmark = input_landmark
+        self.input_length = input_length
 
     def landmarksToTensor(self, landmarks, size=(256,256)):
         #Flatten and normilize landmarks
@@ -155,18 +153,25 @@ class TellGANModel(BaseModel):
 
         return featT
 
-    def forward(self):
+    def forward(self, train=True):
         #nLmks =  self.input_landmark.shape[0]
         self.img_input = Variable(self.input_frame)
+        if train is False:
+            self.img_input = Variable(self.input_frame)
+
 
         self.word_tensor = self.Word2Tensor(self.input_transcription, self.feature_size*2)
         self.word_input = Variable(self.word_tensor)
+        if train is False:
+            self.word_input = Variable(self.word_tensor, volatile=True)
 
         # format landmarks
         featT = self.landmarksToTensor(landmarks=self.input_landmark,
                                             size=(self.input_frame.size(1), self.input_frame.size(2)))
 
         self.lnmk_input = featT
+        self.word_seq_length = self.input_length
+
 
     def Word2Tensor(self, word, dim=1):
         word_cur = word
@@ -192,14 +197,14 @@ class TellGANModel(BaseModel):
 
         return np2tensor_sq2 # 1*1*38*38 (b*c*w*h)
 
+    def compute_landmarks(self, lnmk_init, word_life, lnmk_bias):
+        norm = 1. / float(word_life)
+        #print( "Norm Bias: " , torch.sum(lnmk_bias * norm))
+        return lnmk_init.cuda() + (lnmk_bias * norm)
+
     def test(self, init_tensor, wordChage=False):
 
-        self.forward()
-
-        self.img_input = Variable(self.input_frame, volatile=True)
-
-        self.word_tensor = self.Word2Tensor(self.input_transcription, dim=self.feature_size*2)
-        self.word_input = Variable(self.word_tensor, volatile=True)
+        self.forward(train=False)
 
         if init_tensor == True:
             '''
@@ -211,6 +216,8 @@ class TellGANModel(BaseModel):
             self.word_init = self.word_input
             self.lnmk_cur = self.lnmk_input
             self.lnmk_init = self.lnmk_input
+            self.word_init_life = self.word_seq_length
+            self.word_cur_life = self.word_init_life
 
             self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
@@ -249,16 +256,26 @@ class TellGANModel(BaseModel):
                 '''
                 if wordChage:
                     # Reinitialize the word->feature lstm with prev predicted landmarks
-                    self.lstm_stack = torch.cat((self.word_init, self.lstm_stack[-1].unsqueeze(0)), 0)
+                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_predict.cpu()), 0)
+
                     #self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
 
                 self.img_cur = self.img_input
                 self.word_cur = self.word_input
                 self.lnmk_cur = self.lnmk_input
+                self.word_cur_life = self.word_seq_length
 
                 # Predict Current Landmarks
                 lstm_input = self.lstm_stack.unsqueeze(1).cuda()
-                self.lnmk_predict = self.netPredictor(lstm_input.detach())
+                self.lnmk_predict_bias = self.netPredictor(lstm_input.detach())
+
+                self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
+                                                           self.word_cur_life,
+                                                           self.lnmk_predict_bias)
+
+                self.lnmk_cur_normbias = (self.lnmk_cur - self.lnmk_init)
+                self.lnmk_cur_bias = self.word_cur_life * (self.lnmk_cur - self.lnmk_init)
+                #print("GT Bias:", torch.sum(self.lnmk_cur_normbias))
 
                 # Generate changed Face from landmarks
                 self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
@@ -268,14 +285,14 @@ class TellGANModel(BaseModel):
                                                                                    size=(self.img_cur.size(1),
                                                                                          self.img_cur.size(2)))
 
-                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_predict_imgT.cuda()), 0)
+                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_cur_imgT.cuda()), 0)
                 self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
                 #                             self.lnmk_cur_imgT.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 # Stack predicted landmarks encoding After
-                self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()), 0)
+                self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_bias.cpu()), 0)
 
                 # Save
                 self.img_init_save = self.img_init.data
@@ -347,10 +364,12 @@ class TellGANModel(BaseModel):
         self.img_init = self.img_input
         self.word_init = self.word_input
         self.lnmk_init = self.lnmk_input
+        self.word_init_life = self.word_seq_length
 
         #self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
         self.lnmk_cur = self.lnmk_init
         self.word_cur = self.word_init
+        self.word_cur_life = self.word_init_life
 
         self.lstm_stack = torch.cat((self.word_cur, self.lnmk_cur.unsqueeze(0)),0)
 
@@ -401,16 +420,20 @@ class TellGANModel(BaseModel):
 
         return pil_lnmk_imgT, pil_lnmk_img
 
-
     def backward_G(self):
         # Setting
         self.img_cur = self.img_input
         self.word_cur = self.word_input
         self.lnmk_cur = self.lnmk_input
+        self.word_cur_life = self.word_seq_length
 
         # Prediction
         lstm_input = self.lstm_stack.unsqueeze(1).cuda()
-        self.lnmk_predict = self.netPredictor(lstm_input.detach())
+        self.lnmk_predict_bias = self.netPredictor(lstm_input.detach())
+
+        self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
+                                                   self.word_cur_life,
+                                                   self.lnmk_predict_bias)
 
         # Final
         self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_cur.size(1), self.img_cur.size(2)))
@@ -421,9 +444,11 @@ class TellGANModel(BaseModel):
         self.img_concat = torch.cat((self.img_init.cuda(),self.lnmk_cur_imgT.cuda()),0)
         self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda()) # Train focus on Face Generator
 
+        self.lnmk_cur_bias = self.word_cur_life * (self.lnmk_cur - self.lnmk_init)
+
         # Stack After
-        self.lstm_stack2 = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()),0)
-        self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_cur.unsqueeze(0)), 0)
+        self.lstm_stack_fake = torch.cat((self.lstm_stack, self.lnmk_predict_bias.cpu()),0)
+        self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_cur_bias.unsqueeze(0)), 0)
 
 
 
@@ -432,7 +457,7 @@ class TellGANModel(BaseModel):
         # For Discriminator
         # 1. Discriminator_lnmk - fake landmark added
         self.dis_lnmk_real = self.lstm_stack.unsqueeze(1)
-        self.dis_lnmk_fake = self.lstm_stack2.unsqueeze(1)
+        self.dis_lnmk_fake = self.lstm_stack_fake.unsqueeze(1)
 
         # 2. Discriminator_word - fake word added
         #self.dis_word_real = torch.cat((self.lnmk_stack, self.word_stack2_fake), 1) # Should be changed
@@ -447,7 +472,7 @@ class TellGANModel(BaseModel):
         weight_G_lnmk = 1
         weight_G_pair = 3
         weight_img_idt = 2
-        weight_lnmk_idt = 1
+        weight_lnmk_idt = 2
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
@@ -461,7 +486,7 @@ class TellGANModel(BaseModel):
         #self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
-        self.loss_lnmk_idt = self.criterionIdt(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
+        self.loss_lnmk_idt = self.criterionIdt_lnmk(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
         loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
@@ -492,11 +517,12 @@ class TellGANModel(BaseModel):
         if init_tensor == True:
             #print("[First Frame Initialization] {0} [Word] {1}".format(init_tensor, self.input_transcription))
             self.backward_G_init()
-
+            '''
             for lap in range(0,20):
                 self.optimizer_G.zero_grad()
                 self.backward_G_finetune()
                 self.optimizer_G.step()
+            '''
         else:
             # G
             self.optimizer_G.zero_grad()

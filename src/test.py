@@ -107,9 +107,21 @@ if __name__ == '__main__':
             iter_start_time = time.time()
             t_data = iter_start_time - iter_data_time
 
-            (img, word) = frame
+            (img, align) = frame
+
+            word = None
+            word_nframes = 0
+            if align is not None:
+                word = align.word
+                word_nframes = align.end - align.start
 
             #img = Image.open("/home/jake//classes/cs703/Project/choi.jpg")
+
+            # If we have a problem with the video, reinitialize at next best frame
+            if word is None:
+                print("Incomplete Frame: {0} Size: {1} Word: {2}".format(frame_idx, img.size, word))
+                init_tensor = True
+                continue
 
             ############ Landmarks and localized frame ###############
             mat_img = landmarkSuite.pilToMat(img)
@@ -147,7 +159,7 @@ if __name__ == '__main__':
 
             wordChange = word is not last_word
 
-            input = (imgT, word, feat0)
+            input = (imgT, word, feat0, word_nframes)
             model.set_input(input)
             pred_frame = model.test(init_tensor, wordChage=wordChange)
             init_tensor=False
