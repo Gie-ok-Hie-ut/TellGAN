@@ -268,7 +268,7 @@ class TellGANModel(BaseModel):
                                                                                    size=(self.img_cur.size(1),
                                                                                          self.img_cur.size(2)))
 
-                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_cur_imgT.cuda()), 0)
+                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_predict_imgT.cuda()), 0)
                 self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
