@@ -137,8 +137,7 @@ def main():
         #normTransform
     ])
 
-    data_path = '/home/jake/classes/cs703/Project/data/grid/'
-    loader = GRID(data_path, transform=frame_transforms)
+    loader = GRID(root, transform=frame_transforms)
 
     count = 0
 
