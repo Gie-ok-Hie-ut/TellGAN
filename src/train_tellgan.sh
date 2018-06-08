@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=3 python train.py --dataroot /data2/victorleee/grid/	 --name tellgan_ver2 --model tell_gan 
+CUDA_VISIBLE_DEVICES=2 python train.py --dataroot /data1/victorleee/grid/	 --name tellgan_ver2 --model tell_gan 

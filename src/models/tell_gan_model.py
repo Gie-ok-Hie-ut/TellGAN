@@ -386,8 +386,8 @@ class TellGANModel(BaseModel):
         lmkT2d = lnmk.clone().view(self.feature_size, 1, 2)
 
         # denormalize
-        lmkT2d[:, :, 1] *= size[0]
-        lmkT2d[:, :, 0] *= size[1]
+        lmkT2d[:, :, 1] = lmkT2d[:, :, 1] * size[0]
+        lmkT2d[:, :, 0] = lmkT2d[:, :, 0] * size[1]
         np_lmk = lmkT2d.data.cpu().numpy()
 
         return np_lmk
