@@ -226,9 +226,11 @@ class TellGANModel(BaseModel):
             self.img_predict_save = self.img_predict.data
             self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
 
-            self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
+            self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_cur,
                                                                        size=(self.img_cur.size(1),
                                                                              self.img_cur.size(2)))
+            self.lnmk_cur_imgT = self.lnmk_init_imgT
+            self.lnmk_cur_img = self.lnmk_init_img
             self.lnmk_predict_img = self.lnmk_cur_img
 
             # Save
@@ -273,7 +275,7 @@ class TellGANModel(BaseModel):
                                                            self.word_cur_life,
                                                            self.lnmk_predict_bias)
 
-                self.lnmk_cur_normbias = (self.lnmk_cur - self.lnmk_init)
+                #self.lnmk_cur_normbias = (self.lnmk_cur - self.lnmk_init)
                 self.lnmk_cur_bias = self.word_cur_life * (self.lnmk_cur - self.lnmk_init)
                 #print("GT Bias:", torch.sum(self.lnmk_cur_normbias))
 
@@ -285,7 +287,7 @@ class TellGANModel(BaseModel):
                                                                                    size=(self.img_cur.size(1),
                                                                                          self.img_cur.size(2)))
 
-                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_cur_imgT.cuda()), 0)
+                self.img_concat = torch.cat((self.img_init.cuda(), self.lnmk_predict_imgT.cuda()), 0)
                 self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 #self.img_predict = self.netG(self.img_init.unsqueeze(0).cuda(),
@@ -471,7 +473,7 @@ class TellGANModel(BaseModel):
         weight_G_word = 1
         weight_G_lnmk = 1
         weight_G_pair = 3
-        weight_img_idt = 2
+        weight_img_idt = 0.1 #Changed from 2 @ 700 videos
         weight_lnmk_idt = 2
 
         # Loss Calculate
