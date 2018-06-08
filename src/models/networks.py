@@ -912,8 +912,8 @@ class NextFeaturesForWord(nn.Module):
         # Refer to the Pytorch documentation to see exactly
         # why they have this dimensionality.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (torch.zeros(self.num_layers, 1, self.hidden_size).cuda(),
-                torch.zeros(self.num_layers, 1, self.hidden_size).cuda())
+        return (Variable(torch.zeros(self.num_layers, 1, self.hidden_size).cuda()),
+                Variable(torch.zeros(self.num_layers, 1, self.hidden_size).cuda()))
 
     def forward(self, input):
         lstm_in = None
