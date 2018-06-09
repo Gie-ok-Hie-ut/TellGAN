@@ -91,12 +91,16 @@ if __name__ == '__main__':
     # create website
     web_dir = os.path.join(opt.results_dir, opt.name, '%s_%s' % (opt.phase, opt.which_epoch))
     webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.name, opt.phase, opt.which_epoch))
+<<<<<<< HEAD
     outputdict = {
         '-vcodec': 'libx264',  # use the h.264 codec
         '-crf': '0',  # set the constant rate factor to 0, which is lossless
         '-preset': 'slow'  # the slower the better compression, in princple, try
         # other options see https://trac.ffmpeg.org/wiki/Encode/H.264
     }
+=======
+
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
     out_frames = []
     # test
     for vid_idx, video in enumerate(dataset):
@@ -107,6 +111,7 @@ if __name__ == '__main__':
         init_tensor = True
         vid_path = "./output/test/test_{0}.mp4".format(vid_idx)
         last_word = None
+<<<<<<< HEAD
         """
         writer = skvideo.io.FFmpegWriter(vid_path, outputdict={
             '-vcodec': 'libx264',  # use the h.264 codec
@@ -117,10 +122,14 @@ if __name__ == '__main__':
         """
         out_frames = []
         vid_error = []
+=======
+
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
         for frame_idx, frame in enumerate(video):
             iter_start_time = time.time()
             t_data = iter_start_time - iter_data_time
 
+<<<<<<< HEAD
             (img, align) = frame
 
             word = None
@@ -137,6 +146,12 @@ if __name__ == '__main__':
                 init_tensor = True
                 continue
 
+=======
+            (img, word) = frame
+
+            #img = Image.open("/home/jake//classes/cs703/Project/choi.jpg")
+
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
             ############ Landmarks and localized frame ###############
             mat_img = landmarkSuite.pilToMat(img)
             localizedFrame, feat0 = localizer.localize(mat_img, mouthonly=False)
@@ -173,13 +188,20 @@ if __name__ == '__main__':
 
             wordChange = word is not last_word
 
+<<<<<<< HEAD
             input = (imgT, word, feat0, word_nframes)
+=======
+            input = (imgT, word, feat0)
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
             model.set_input(input)
             pred_frame = model.test(init_tensor, wordChage=wordChange)
             init_tensor=False
 
             errors = model.get_current_errors()
+<<<<<<< HEAD
             vid_error.append(errors['MSE'])
+=======
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
             t = (time.time() - iter_start_time) / opt.batchSize
             visualizer.print_current_errors(vid_idx, frame_idx, errors, t, t_data)
 
@@ -189,18 +211,28 @@ if __name__ == '__main__':
             # Set up next frame
             last_word = word
             visuals = model.get_current_visuals()
+<<<<<<< HEAD
             #writer.writeFrame(gen_out_frame(visuals, word))
+=======
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
             out_frames.append(gen_out_frame(visuals, word))
 
         #outputdata = np.expand_dims(np.array(out_frames), axis=3)
         outputdata = np.array(out_frames)
+<<<<<<< HEAD
         skvideo.io.vwrite(vid_path.format(vid_idx), outputdata, outputdict=outputdict)
+=======
+        skvideo.io.vwrite(vid_path.format(vid_idx), outputdata)
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
 
         #writer.close()
         #img_path = model.get_image_paths()
         print('%04d: process video... %s' % (vid_idx, vid_path))
+<<<<<<< HEAD
 
         print("MSELoss for Video {0}: {1}", sum(vid_error)/len(vid_error))
+=======
+>>>>>>> 57b94183fdda84d12e8a36060211d08f417f161f
         #visualizer.save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio)
 
     webpage.save()
