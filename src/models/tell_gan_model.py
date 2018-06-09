@@ -257,10 +257,6 @@ class TellGANModel(BaseModel):
             self.lnmk_predict_save = self.lnmk_predict_img
 
 
-            for lap in range(0,0):
-                self.optimizer_G.zero_grad()
-                self.backward_G_finetune()
-                self.optimizer_G.step()
         else:
             with torch.no_grad():
                 '''
@@ -283,7 +279,9 @@ class TellGANModel(BaseModel):
                 self.lnmk_cur = self.lnmk_input
                 self.word_cur_life = self.word_seq_length
 
-                lstm_step = int(self.lstm_sample_size / self.word_cur_life)
+                # Set sample size to determine step size, account for words too long
+                current_sample_size = min(self.lstm_sample_size, self.word_cur_life)
+                lstm_step = int(self.lstm_sample_size / current_sample_size)
 
                 # loop through samples with no ground truth (oversample), predicting each one
                 for step in range(0, lstm_step):
@@ -458,10 +456,12 @@ class TellGANModel(BaseModel):
         self.lnmk_cur = self.lnmk_input
         self.word_cur_life = self.word_seq_length
 
-        lstm_step = int(self.lstm_sample_size / self.word_cur_life)
-        print("LSTM step size {0} | LSTM sample size {1} | Word current sample rate {2}".format(lstm_step,
-                                                                                                self.lstm_sample_size,
-                                                                                                self.word_cur_life))
+        # Set sample size to determine step size, account for words too long
+        current_sample_size = min(self.lstm_sample_size, self.word_cur_life)
+        lstm_step = int(self.lstm_sample_size / current_sample_size)
+        #print("LSTM step size {0} | LSTM sample size {1} | Word current sample rate {2}".format(lstm_step,
+        #                                                                                        self.lstm_sample_size,
+        #                                                                                        current_sample_size))
 
         # loop through samples with no ground truth (oversample), predicting each one
         for step in range(0, lstm_step):
