@@ -112,10 +112,21 @@ class TellGANModel(BaseModel):
 
             for optimizer in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optimizer, opt))
+
+            self.loss_D_lnmk = 0
+            self.loss_D_pair = 0
+            self.loss_G_lnmk = 0
+            self.loss_G_pair = 0
+            self.loss_img_idt = 0
+            self.loss_lnmk_idt = 0
+
         else:
             # initialize optimizers
             self.criterionTest = torch.nn.MSELoss()
             self.criterionTest.cuda()
+
+            self.loss_test  = 0
+            self.loss_test_lmk  = 0
 
 
         print('---------- Networks initialized -------------')
@@ -378,6 +389,10 @@ class TellGANModel(BaseModel):
         self.word_cur = self.word_init
         self.word_cur_life = self.word_init_life
 
+        self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_init,
+                                                                     size=(self.img_init.size(1),
+                                                                           self.img_init.size(2)))
+
         self.lstm_stack = torch.cat((self.word_cur, self.lnmk_cur.unsqueeze(0)),0)
 
         self.word_flag = True
@@ -387,8 +402,8 @@ class TellGANModel(BaseModel):
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_init.data
         self.img_predict_save = self.img_init.data
-        self.lnmk_cur_save = self.lnmk_init.data
-        self.lnmk_predict_save = self.lnmk_init.data
+        self.lnmk_cur_save = self.lnmk_init_img
+        self.lnmk_predict_save = self.lnmk_init_img
         self.loss_G_lnmk = 0
         self.loss_G_pair = 0
         self.loss_img_idt = 0
@@ -405,7 +420,7 @@ class TellGANModel(BaseModel):
         self.loss_img_idt.backward(retain_graph=True)
 
 
-        self.img_predict_save = self.img_init_predict.data
+        self.img_predict_save = self.lnmk_init_img
         self.loss_img_idt = self.loss_img_idt.data[0]
 
     def landmarkTToNp(self, lnmk, size=(128,128)):

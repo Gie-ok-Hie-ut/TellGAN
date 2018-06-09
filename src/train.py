@@ -52,7 +52,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx in range(0,dataset_size):
+        for vid_idx in range(13549,dataset_size):
             video = dataset[vid_idx]
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
@@ -101,7 +101,7 @@ if __name__ == '__main__':
                 pil_localizedFrame = landmarkSuite.matToPil(localizedFrame)
                 imgT = toTensor(pil_localizedFrame)
 
-				#######################################
+                #######################################
 
                 # Exception vs frame size
                 if localizedFrame.shape[1] is not face_size[0] or localizedFrame.shape[0] is not face_size[1]:
@@ -111,13 +111,13 @@ if __name__ == '__main__':
 
                 # Exception - word
                 if word == "sil":
-                	continue
+                    continue
 
                 # Exception - dic size                
                 if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(word, -1) == -1:
-                	print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, word))
-                	init_tensor=True
-                	continue
+                    print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, word))
+                    init_tensor=True
+                    continue
 
                 # Train
                 input = (imgT, word, feat0, word_nframes)
@@ -132,6 +132,9 @@ if __name__ == '__main__':
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
                 visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
+
+            save_result = total_steps % opt.update_html_freq == 0
+            visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
 
             if total_steps % opt.print_freq == 0:
                 errors = model.get_current_errors()
