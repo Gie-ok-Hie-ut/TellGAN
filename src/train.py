@@ -52,7 +52,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx in range(0,dataset_size): #13549,dataset_size):
+        for vid_idx in range(9910,dataset_size): #13549,dataset_size):
             video = dataset[vid_idx]
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
@@ -135,9 +135,6 @@ if __name__ == '__main__':
             if total_steps % opt.display_freq == 0:
                 save_result = total_steps % opt.update_html_freq == 0
                 visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
-
-            save_result = total_steps % opt.update_html_freq == 0
-            visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
 
             if total_steps % opt.print_freq == 0:
                 errors = model.get_current_errors()
