@@ -270,6 +270,9 @@ class FeaturePredictor(object):
         features_ = features_[features_[:,0,1] < size[0]]
         features_ = features_[features_[:,0,0] < size[1]]
 
+        features_ = features_[features_[:,0,1] > 0]
+        features_ = features_[features_[:,0,0] > 0]
+
         mask[features_[:,:,1], features_[:,:,0]] = 255
 
         return mask
