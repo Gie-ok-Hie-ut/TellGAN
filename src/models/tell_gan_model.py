@@ -436,8 +436,8 @@ class TellGANModel(BaseModel):
         lmkT2d = lnmk.clone().view(self.feature_size, 1, 2)
 
         # denormalize
-        lmkT2d[:, :, 1] = lmkT2d[:, :, 1] * size[0]
-        lmkT2d[:, :, 0] = lmkT2d[:, :, 0] * size[1]
+        lmkT2d[:, :, 1] = lmkT2d[:, :, 1] * size[0] # height
+        lmkT2d[:, :, 0] = lmkT2d[:, :, 0] * size[1] # width
         np_lmk = lmkT2d.data.cpu().numpy()
 
         return np_lmk
@@ -524,6 +524,7 @@ class TellGANModel(BaseModel):
         weight_G_pair = 3
         weight_img_idt = 0.1 #Changed from 2 @ 700 videos
         weight_lnmk_idt = 2
+        weight_lnmk_idt_x = 0.5 # Added @ 16530
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
@@ -539,9 +540,13 @@ class TellGANModel(BaseModel):
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
         self.loss_lnmk_idt = self.criterionIdt_lnmk(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
 
+        # X motion is too small relative to Y motion, add a magnified x loss to force network to care more
+        lnmk_predict_x = self.lnmk_predict.view(20,2)[:,0]
+        lnmk_cur_x = self.lnmk_cur.view(20,2)[:,0]
+        self.loss_lnmk_x = self.criterionIdt_lnmk(lnmk_predict_x.unsqueeze(0), lnmk_cur_x.cuda().unsqueeze(0)) * weight_lnmk_idt_x
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
-        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
+        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt + self.loss_lnmk_x
         loss_total.backward(retain_graph=True)
 
 
