@@ -99,6 +99,8 @@ class TellGANModel(BaseModel):
             self.criterionIdt_lnmk.cuda()
 
             # initialize optimizers
+            self.weak_optimizer = torch.optim.Adam(
+                itertools.chain(self.netPredictor.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_G = torch.optim.Adam(
                 itertools.chain(self.netG.parameters(), self.netPredictor.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
                 #itertools.chain(self.netG.parameters(), self.netImgEncoder.parameters(), self.netImgLSTM.parameters(), self.netImgDecoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -469,6 +471,14 @@ class TellGANModel(BaseModel):
             self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
             # Stack After
             self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
+
+            lnmk_predict_sample = self.compute_landmarks(self.lnmk_init,
+                                                         self.word_cur_life,
+                                                         self.lnmk_predict_delta)
+            self.weak_optimizer.zero_grad()
+            weak_loss = self.criterionIdt_lnmk(lnmk_predict_sample, self.lnmk_cur.unsqueeze(0).cuda()) * 0.01
+            weak_loss.backward(retain_graph=True)
+            self.weak_optimizer.step()
 
         # Prediction
         lstm_input = self.lstm_stack.unsqueeze(1).cuda()
