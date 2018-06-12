@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from torchvision import transforms
 import itertools
 import util.util as util
+import torch.nn.functional as F
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
@@ -524,7 +525,6 @@ class TellGANModel(BaseModel):
         weight_G_pair = 3
         weight_img_idt = 0.1 #Changed from 2 @ 700 videos
         weight_lnmk_idt = 2
-        weight_lnmk_idt_x = 0.5 # Added @ 16530
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
@@ -538,15 +538,14 @@ class TellGANModel(BaseModel):
         #self.loss_G_speak = self.criterionGAN(self.netD_speak(self.fake_dspeak_enc), True) * weight_G
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
-        self.loss_lnmk_idt = self.criterionIdt_lnmk(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
 
-        # X motion is too small relative to Y motion, add a magnified x loss to force network to care more
-        lnmk_predict_x = self.lnmk_predict.view(20,2)[:,0]
-        lnmk_cur_x = self.lnmk_cur.view(20,2)[:,0]
-        self.loss_lnmk_x = self.criterionIdt_lnmk(lnmk_predict_x.unsqueeze(0), lnmk_cur_x.cuda().unsqueeze(0)) * weight_lnmk_idt_x
+        # Change @ 23720, loss from normalize deltas
+        tanh_gt_delta = torch.tanh(self.lnmk_cur_delta.unsqueeze(0).cuda())
+        tanh_pred_delta = torch.tanh(self.lnmk_predict_delta)
+        self.loss_lnmk_idt = self.criterionIdt_lnmk(tanh_pred_delta, tanh_gt_delta) * weight_lnmk_idt
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
-        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt + self.loss_lnmk_x
+        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
         loss_total.backward(retain_graph=True)
 
 
