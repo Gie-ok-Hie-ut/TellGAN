@@ -25,7 +25,8 @@
 \begin{document}
 
 %%%%%%%%% TITLE
-\title{Project proposal}
+\title{Project Report\\
+TellGAN: Motion Prediction and Video Generation From Natural Text}
 
 \author{Gunhee Lee, Jacob Morton\\
 20172811, 20172327\\
@@ -41,11 +42,11 @@ Computer Science and Engineering, POSTECH\\
 %%%%%%%%% BODY TEXT
 \section{Abstract}
 
- We propose a Tell Generative Adversarial Network (TellGAN) which, given a face image with text in natural language, will generate plausible video frames of the given face speaking the given words. We call it TellGAN, because we tell the given face what to say. Although our project is related to lip reading, a well researched area, it appears that our text-to-video approach is the first of its kind. Our approach is devided into two parts, landmark trajectory prediction from a given word and generating a face and video frames from the predicted landmarks and initial face. We also propose a novel use of an LSTM to predict motion over a various number of frames. Among the several datasets used for lip reading, we used the GRID Corpus\footnote{http://spandh.dcs.shef.ac.uk/gridcorpus/}.
+ We propose a Tell Generative Adversarial Network (TellGAN) which, given an initial starting frame with landmarks and text that describes an action, will generate plausible video frames of the given target performing the action. We call it TellGAN, because we tell the target what to do. Our method is a generic end-to-end approach that predicts motion and generates video frames. We divide the task into two parts, landmark trajectory prediction from a given word and generating a video frames from the predicted landmarks and initial target position. We also propose a novel use of an LSTM to predict motion over a various number of frames, to model motions at different speeds. We chose mouth motion prediction for a given word as an application for our model. Although this application is related to lip reading (video-to-text), a well researched area, it appears that text-to-video face motion has not been approached directly before.  Among the several datasets used for lip reading, we used the GRID Corpus\footnote{http://spandh.dcs.shef.ac.uk/gridcorpus/}.
  
 %------------------------------------------------------------------------
 \section{Introduction}
- Text-Driven animation is not a new topic, but the known approaches use text-to-speech generators to drive animation and also do not use Deep Neural Networks (DNN) or Generative adversarial networks (GAN) for driving animation. Text-to-speech techniques offer some advantages, as it is easier to map continuous wave forms than discrete words to the continuous motions of the mouth during speech. Our proposed method will skip the text-to-speech generation by training a GAN and LSTMs with the aid of lip-reading techniques. Visual only lip reading is a heavily research topic and is essentially a Video-to-text problem. Our proposed approach is essentially the inverse to lip reading, a Text-to-Video problem.
+ Text-Driven animation is not a new topic, but the known approaches use text-to-speech generators to drive animation and also do not use Deep Neural Networks (DNN) or Generative adversarial networks (GAN) for driving animation. Text-to-speech techniques offer some advantages, as it is easier to map continuous wave forms than discrete words to the continuous motions of the mouth during speech. Our proposed method will skip the text-to-speech generation by training a GAN and an LSTM with the aid of lip-reading techniques. Visual only lip reading is a heavily research topic and is essentially a Video-to-text problem. Our proposed approach is the inverse to lip reading, a Text-to-Video problem.
 
  Generative adversarial networks has been improved in recent years. There also has been research which relates generative adversarial network and natural language processing. The text-to-image generation is one of the most obvious examples of it. 
   
