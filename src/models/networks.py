@@ -890,13 +890,15 @@ class NextFeaturesForWord(nn.Module):
         self.input_seq = [
             nn.Linear(input_size, hidden_size),
             nn.Dropout(0.5),
-            nn.Linear(hidden_size, hidden_size)
+            nn.Linear(hidden_size, hidden_size),
+            nn.Dropout(0.5),
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]
 
         self.output_seq = [
-            nn.Linear(hidden_size,output_size)
+            nn.Linear(hidden_size,output_size),
+            nn.Dropout(0.5),
             #nn.ReLU(True),
             #nn.Sigmoid()
         ]
