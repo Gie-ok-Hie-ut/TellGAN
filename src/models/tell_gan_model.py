@@ -229,8 +229,9 @@ class TellGANModel(BaseModel):
             self.img_init = self.img_input
             self.img_cur = self.img_input
             self.word_init = self.word_input
-            self.lnmk_cur = self.lnmk_input
             self.lnmk_init = self.lnmk_input
+            self.lnmk_cur = self.lnmk_init
+            self.lnmk_prev = self.lnmk_init
             self.word_init_life = self.word_seq_length
             self.word_cur_life = self.word_init_life
 
@@ -240,6 +241,7 @@ class TellGANModel(BaseModel):
             self.img_predict = self.img_input.unsqueeze(0).cuda()
             self.img_predict_save = self.img_predict.data
             self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
+            self.lnmk_predict_prev = self.lnmk_predict
 
             self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_cur,
                                                                        size=(self.img_cur.size(1),
@@ -285,21 +287,27 @@ class TellGANModel(BaseModel):
                 lstm_step = int(self.lstm_sample_size / current_sample_size)
 
                 # loop through samples with no ground truth (oversample), predicting each one
+                self.lnmk_cur_delta = self.lnmk_cur - self.lnmk_prev
+
+                # Initialize with previous ground truth
+                lnmk_pred_sample = self.lnmk_predict_prev.cpu()
                 for step in range(0, lstm_step):
                     lstm_input = self.lstm_stack.unsqueeze(1).cuda()
                     self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
-                    # Stack After
-                    self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
+
+                    # Add previous landmark (GT or predicted) with predicted change
+                    lnmk_pred_sample = self.compute_landmarks(lnmk_pred_sample,
+                                                              self.lnmk_predict_delta)
+
+                    # Stack After with predicted landmark
+                    self.lstm_stack = torch.cat((self.lstm_stack, lnmk_pred_sample.detach().cpu()), 0)
 
                 # Predict Current Landmarks
                 lstm_input = self.lstm_stack.unsqueeze(1).cuda()
                 self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
-                self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
-                                                           self.word_cur_life,
+                self.lnmk_predict = self.compute_landmarks(self.lnmk_predict_prev,
                                                            self.lnmk_predict_delta)
-
-                self.lnmk_cur_delta = (self.lnmk_cur - self.lnmk_init)
 
                 # Generate changed Face from landmarks
                 self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
@@ -317,7 +325,7 @@ class TellGANModel(BaseModel):
                 #                             self.lnmk_cur_imgT.unsqueeze(0).cuda())  # Train focus on Face Generator
 
                 # Stack predicted landmarks encoding After
-                self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
+                self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict.cpu()), 0)
 
 
                 # Save
@@ -327,6 +335,8 @@ class TellGANModel(BaseModel):
 
                 self.lnmk_cur_save = self.lnmk_cur_img
                 self.lnmk_predict_save = self.lnmk_predict_img
+                self.lnmk_prev = self.lnmk_cur
+                self.lnmk_predict_prev = self.lnmk_predict
 
         self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
         self.loss_test_lmk = self.criterionTest(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)).data[0]
