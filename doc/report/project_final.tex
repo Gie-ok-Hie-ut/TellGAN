@@ -83,7 +83,7 @@ The proposed architecture uses GAN network model which is comprised of generator
 The generator is comprised of motion predictor and the image generator. Motion predictor gets the condition and previous landmark positions and predicts the next landmark. Image generator gets this predicted landmark and initial photo to make a realistic image based on this landmark.
 
 \subsubsection{Motion Predictor}
-Motion predictor predicts the next motion based on the previous landmark information and condition. As we said above, the word information roles as a condition in this project. We first tiled the word information to make this have the same size as the landmark information have. Then we concatenated this word information with the initial landmark information. All the landmark information is represented as a table which represents x, and y value of all points. This concatenated information now feeds into the LSTM network. In the LSTM network
+Motion predictor predicts the next motion based on the previous landmark information and condition. As we said above, the word information roles as a condition in this project. We first tiled the word information to make this have the same size as the landmark information have. Then we concatenated this word information with the initial landmark information. All the landmark information is represented as a table which represents x, and y value of all points. This concatenated information now feeds into the LSTM network.
 \subsubsection{Image Generator}
 
 Image generator uses an initial image and predicted landmarks. We used U-Net network to modify initial image based on the predicted landmarks. The landmark image and initial image is concatenated and passed through this network. U-Net network is a well-known network architecture which uses skip connections to reconstruct the image. For encoder and decoder part we all used the convolution layers and instance normalization layers. There are many ways for the decoder part to make the image size big. In this time, we used the transpose convolution as an upsampling.
@@ -119,34 +119,24 @@ Combining this two equations, the prediction frequency is sufficient to be large
 
 \bigskip
 \begin{center}
-$freq_{pred}^{M_k} \geq MAX[freq_{analog signal}^{M_k}] $
+$freq_{pred}^{M_k} \geq MAX[freq_{analog}^{M_k}] $
 \end{center}
 \bigskip
 
-This method can be represented like Figure 2.
+This method can be represented like the left side of Figure 2.
 
-\begin{figure}[h]
+\begin{figure*}
 \begin{center}
-\includegraphics [scale=0.33] {images/upsample1.JPG}
+\includegraphics [scale=0.3] {images/upsample.JPG}
 \end{center}
-\caption{Learning Prediction by Up-sampling. $Left:$ Same motion $M_k$ have the different number of frames. $Right:$ This GT value can be scaled up to specific fixed number of frames.}
+ \caption{$Left:$ Learning Prediction by Up-sampling. $Right:$ Prediction by Up-sampling. $Left:$ Same motion $M_k$ have the different number of frames. This GT value can be scaled up to specific fixed number of frames. $Right:$ Same motion $M_k$ is set to have the different number of frames. Sequence of shown frames at each row would be perceived to have motion like this.}
 \label{fig:short}
-\label{fig:onecol}
-\end{figure}
-
+\end{figure*}
 
 Every different time length with the same motion is scaled up to the same amount of frame. The motion predictor predicts the motion every time and it is back-propagated every time. We introduced the ‘strong identity loss’ and ‘weak identity loss’. When there is a ground truth value, we adjust strong identity loss to minimize the value. If there is no ground truth value, we perform weak identity loss between predicted value and the next ground truth value. We used the L1 loss to minimize the distance between ground truth position and predicted position. And the weight is adjusted to achieve this objective.
 
-With this method, the velocity of the motion also can be changed. This method can be verified when we test this model. Motion predictor predicts the fixed size of frames which is denser than the ground truth data. This means that if we change the amount of sampling ratio from motion predictor, the velocity of motion would be changed. If the sampling step size is big, the motion would be seemed to change rapidly. If the sampling step size is small, the motion would be seemed to change slowly. This method can be explained like this Figure 3.
+With this method, the velocity of the motion also can be changed. This method can be verified when we test this model. Motion predictor predicts the fixed size of frames which is denser than the ground truth data. This means that if we change the amount of sampling ratio from motion predictor, the velocity of motion would be changed. If the sampling step size is big, the motion would be seemed to change rapidly. If the sampling step size is small, the motion would be seemed to change slowly. This method can be explained like the right side of Figure 2.
 
-\begin{figure}[h]
-\begin{center}
-\includegraphics [scale=0.33] {images/upsample2.JPG}
-\end{center}
-\caption{Prediction by Up-sampling. $Left:$ Same motion $M_k$ is set to have the different number of frames. $Right:$ Sequence of shown frames at each row would be perceived to have motion like this.}
-\label{fig:short}
-\label{fig:onecol}
-\end{figure}
 
 
 %------------------------------------------------------------------------
