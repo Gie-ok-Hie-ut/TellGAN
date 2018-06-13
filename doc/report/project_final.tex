@@ -52,7 +52,7 @@ Computer Science and Engineering, POSTECH\\
 
  Text-Driven animation is not a new topic, but the current approaches use text-to-speech generators to drive animation and are not typically generic. There has been some recent independent techniques developed concurrently with ours that use Generative Adversarial Networks (GAN) for generating video frames, but again use audio as a driving factor. Text-to-speech techniques offer several advantages as there are plenty of previous works and is an easier task to map continuous wave forms rather than discrete words to the motions of the mouth during speech. Our proposed method will skip the text-to-speech generation by training a GAN and an LSTM with the aid of lip-reading techniques. Visual only lip reading is a heavily research topic and is essentially a video-to-text and action classification problem. Our proposed approach is the inverse to lip reading, a Text-to-Video and action generation problem. Generating compelling speech motions from words is a challenging problem. Humans are good at recognizing fine facial movements and can intemperate words from mouth motions. Also most motion prediction techniques don't demonstrate predictions of the fine motions required to model speech.
 
- Generative adversarial networks have improved in recent years. There also has been research which relates generative adversarial network and natural language processing. Text-to-image generation is one of the most obvious examples of it. Using a GAN to Generate video or images from changing landmarks is currently an active area of research \cite{Authors14a,Authors14b,Authors14c}. We use a UNet architecture that takes as input an initial frame and desired landmark positions to change the image to the desired state. The results are of a high degree of realism, where the line between a fake image and real image is blurred.
+ Generative adversarial networks have improved in recent years. There also has been research which relates generative adversarial network and natural language processing. Text-to-image generation is one of the most obvious examples of it. Using a GAN to Generate video or images from changing landmarks is currently an active area of research \cite{Authors14a,Authors14b,Authors14c}. We use a U-Net architecture that takes as input an initial frame and desired landmark positions to change the image to the desired state. The results are of a high degree of realism, where the line between a fake image and real image is blurred.
  
  Our 2-step frame prediction offers more flexibility than previous approaches for the length of action being learned and predicted in addition to generating photo-realistic results. Compared with the normal image generation model, our model receives the input image. The contemporary state of the art network called AttentionGAN (Tao Xu et al.) can only change the image as a whole to meet the sentence direction, which is not desirable. For example, the minor changes that occur between frames would result in a completely different image. Our model would make the image more controllable than the previous approach. Also our model has a temporal component, as we propose generating a series of images that correspond spoken motions derived from the given input to make a video sequence. This has several challenges, among which are maintaining temporal coherency and preventing errors cascading through future generated frames. Previous work on text-to-video using GAN exists\footnote{Video Generation From Text (Li, 2017)} \cite{Authors15a,Authors15b}. We will not use this method, as we will not have an end frame nor do we wish to use simultaneous generation of frame sequences. Instead we will opt for simplicity with a sequential approach that divides the task into separate steps, motion prediction from action and image generation from landmarks.
 
@@ -82,25 +82,32 @@ The proposed architecture uses GAN network model which is comprised of generator
 
 
 \subsection{Two - Stage Generator}
-The generator is comprised of motion predictor and the image generator. Motion predictor gets the condition and previous landmark positions and predicts the next landmark. Image generator gets this predicted landmark and initial photo to make a realistic image based on this landmark.
+The generator is comprised of a motion predictor and the image generator. The Motion predictor gets the condition and previous landmark positions and predicts the next landmark. The image generator gets this predicted landmark and initial photo to make a realistic image based on this landmark.
 
 \subsubsection{Motion Predictor}
-Motion predictor predicts the next motion based on the previous landmark information and condition. As we said above, the word information roles as a condition in this project. We first tiled the word information to make this have the same size as the landmark information have. Then we concatenated this word information with the initial landmark information. All the landmark information is represented as a table which represents x, and y value of all points. This concatenated information now feeds into the LSTM network.
+The motion predictor predicts the next motion based on the previous landmark information and condition. As we said above, the word information role is as a condition in this project. We first tiled the word information to make this have the same size as the landmark information have. Then we concatenated this word information with the initial landmark information. All the landmark information is represented as a table which represents x and y value of all points. This concatenated information is now fed into the LSTM network.
 \subsubsection{Image Generator}
 
-Image generator uses an initial image and predicted landmarks. We used U-Net network to modify initial image based on the predicted landmarks. The landmark image and initial image is concatenated and passed through this network. U-Net network is a well-known network architecture which uses skip connections to reconstruct the image. For encoder and decoder part we all used the convolution layers and instance normalization layers. There are many ways for the decoder part to make the image size big. In this time, we used the transpose convolution as an upsampling.
+The image generator uses an initial image and predicted landmarks. We used U-Net network to modify initial image based on the predicted landmarks. The landmark image and initial image is concatenated and passed through this network. The U-Net network is a well-known network architecture which uses skip connections to reconstruct the image. For the encoder and decoder part we used all convolution layers and instance normalization layers. There are many ways for the decoder part to make the image size big. At this time, we used the transpose convolution as an upsampling.
 
 \subsection{Discriminator}
- There are two different types of a discriminator, sequence discriminator, and pair discriminator.
+ There are two different types of a discriminator, sequence discriminator and pair discriminator.
+ 
 \subsubsection{Sequence Discriminator}
-Sequence discriminator distinguishes between real sequence data and fake sequence data. Real sequence data is comprised of a ground truth initial frame and a current frame. Fake sequence data is comprised of a ground truth initial frame, previous frame, and fake current frame. Unlike other discriminators, this discriminator should get different size of the input at each time. To deal with this problem, we introduced the sequence discriminator which has the LSTM network as a basic structure. We used LSTM network which is said to be good at handling vanishing gradient problem through time.
-This sequence discriminator also can be used as a word discriminator. All the concatenated data starts from the word information first. We expect that if we give a fake word at the first time and concatenate the ground truth sequence, the sequence discriminator should determine it as a false. In this paper, we are not using this modified form of sequence discriminator.
+Sequence discriminator distinguishes between real sequence data and fake sequence data. Real sequence data is comprised of a ground truth initial frame and a current frame. Fake sequence data is comprised of a ground truth initial frame, previous frame, and fake current frame. Unlike other discriminators, this discriminator should get different size of the input at each time. To deal with this problem, we introduced the sequence discriminator which has the LSTM network as a basic structure. We used an LSTM network which is said to be good at handling vanishing gradient problem through time.
+
+This sequence discriminator can also be used as a word discriminator. All the concatenated data starts with the word information first. We expect that if we give a fake word at the first time and concatenate the ground truth sequence, the sequence discriminator should determine it as false. In this paper, we are not using this modified form of sequence discriminator.
+
 \subsubsection{Pair Discriminator}
+
 Pair discriminator distinguishes between real pair data and fake pair data. Real pair data is concatenated by real landmark and real image. Fake pair data is concatenated by real landmark and predicted image from image generator. Real landmark is given as a condition to this network.
+
 \section{Learning Prediction by Up-sampling}
 The challenge in this predictor is due to the variety of trajectories of each landmark points. The trajectory could be different every time. This could be varied depends on how long that the word would be spoken, how loud or small the word would be spoken, and what word is said before. We thought the time length of each word mainly affects the difficulties of this problem.
+
 To solve this variation of time problem, we are introducing $Learning$ $ prediction$ $by$ $upsampling$ method. This method assumes that the overall trajectory of each word is similar, and this trajectory is just scaled up with respect to the time length. The motion predictor would predict motion with the fixed number of time which should be larger than the maximum number of ground truth time length of each word. In other words, all the ground truth would be scaled up to some fixed length, and the motion predictor should predict the motion at every fixed length of time.
-This approach is based on the Nyquist sampling theorem. If the sampling frequency is at least twice much higher than the original signal frequency, the sample would be sufficient to represent the original signal. The video sampling frequency should be at least twice much higher than the landmark analogous signal. Let's say there is a $N$ number of motion, $M_k$, in set $M = \big[\ M_k|M_1,M_2, ... , M_N\big]$. The video frequency of word $M_k$ can be represented like  $freq_{video}^{M_k}$, and original landmark analogous signal can be represented like $freq_{analog}^{M_k}$.This all can be represented like this using Nyquist sampling theorem.
+
+This approach is based on the Nyquist sampling theorem. If the sampling frequency is at least twice much higher than the original signal frequency, the sample would be sufficient to represent the original signal. The video sampling frequency should be at least twice as much higher than the landmark analogue signal. Let's say there is a $N$ number of motion, $M_k$, in set $M = \big[\ M_k|M_1,M_2, ... , M_N\big]$. The video frequency of word $M_k$ can be represented like  $freq_{video}^{M_k}$, and original landmark analogue signal can be represented like $freq_{analog}^{M_k}$.This all can be represented like this using Nyquist sampling theorem.
 
 \bigskip
 \begin{center}
@@ -108,7 +115,7 @@ $freq_{video}^{M_k} \geq 2 \ast freq_{analog}^{M_k} $
 \end{center}
 \bigskip
 
-In the same way, the prediction frequency,$freq_{pred}^{M_k}$, also should be at least twice much higher than the landmark analogous signal. This also can be represented like this.
+In the same way, the prediction frequency,$freq_{pred}^{M_k}$, also should be at least twice as much higher than the landmark analogue signal. This also can be represented like this.
 
 \bigskip
 \begin{center}
@@ -116,7 +123,7 @@ $freq_{pred}^{M_k} \geq 2 \ast freq_{analog}^{M_k} $
 \end{center}
 \bigskip
 
-Combining this two equations, the prediction frequency is sufficient to be larger than the max video frequency. Then, prediction frequency would also be at least twice much higher than the landmark analogous signal.
+Combining this two equations, the prediction frequency is sufficient to be larger than the max video frequency. Then, prediction frequency would also be at least twice as much higher than the landmark analogous signal.
 
 \bigskip
 \begin{center}
@@ -134,7 +141,7 @@ This method can be represented like the left side of Figure 2.
 \label{fig:short}
 \end{figure*}
 
-Every different time length with the same motion is scaled up to the same amount of frame. The motion predictor predicts the motion every time and it is back-propagated every time. We introduced the ‘strong identity loss’ and ‘weak identity loss’. When there is a ground truth value, we adjust strong identity loss to minimize the value. If there is no ground truth value, we perform weak identity loss between predicted value and the next ground truth value. We used the L1 loss to minimize the distance between ground truth position and predicted position. And the weight is adjusted to achieve this objective.
+Every different time length with the same motion is scaled up to the same amount of frame. The motion predictor predicts the motion every time and it is back-propagated every time. We introduced the ‘strong identity loss’ and ‘weak identity loss’. When there is a ground truth value, we adjust strong identity loss to minimize the value. If there is no ground truth value, we perform weak identity loss between predicted value and the next ground truth value. We used the L1 loss to minimize the distance between ground truth position and predicted position. The weight is adjusted to achieve this objective.
 
 With this method, the velocity of the motion also can be changed. This method can be verified when we test this model. Motion predictor predicts the fixed size of frames which is denser than the ground truth data. This means that if we change the amount of sampling ratio from motion predictor, the velocity of motion would be changed. If the sampling step size is big, the motion would be seemed to change rapidly. If the sampling step size is small, the motion would be seemed to change slowly. This method can be explained like the right side of Figure 2.
 
@@ -149,7 +156,7 @@ With this method, the velocity of the motion also can be changed. This method ca
 
  After trying several network architectures, we found that a simpler 2-part approach with a motion prediction model and an image generation model using an initial frame and predicted landmarks was faster to train and produced better results. We performed a series of qualitative and quantitative tests. 
  
-\subsection{UNet Image Generation}
+\subsection{U-Net Image Generation}
  To test the image generator we performed a qualitative test to compare generated frames using ground truth landmarks with frames from ground truth videos. We are mostly interested in mouth movement, since the remaining parts of the face are expected to be static. We found the result is compelling. The mouth jitters which is caused by the landmark detection, but frame by frame it is difficult to tell which is image is fake. Teeth, tongue, and inner mouth is realistically generated. In motion the result can appear uncanny since the eyes and head pose remain perfectly stationary. See Figure \ref*{fig:green}, the bottom row for an example of generating a face with ground truth landmarks.
 
  \begin{figure*}[t]

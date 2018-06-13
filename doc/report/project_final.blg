@@ -57,7 +57,7 @@ Too many commas in name 1 of "Y. Li, M. R. Min, D. Shen, D. Carlson, and L. Cari
 while executing---line 1116 of file ieee.bst
 You've used 8 entries,
             2120 wiz_defined-function locations,
-            542 strings with 5114 characters,
+            542 strings with 5006 characters,
 and the built_in function-call counts, 1957 in all, are:
 = -- 176
 > -- 104

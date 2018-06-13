@@ -3,7 +3,7 @@
 \bibitem{Authors15b}
 H.~P. C.~Vondrick and A.~Torralba.
 \newblock Generating videos with scene dynamics, 2016.
-\newblock NIPS, pages 613–621 {\tt fg324.pdf}.
+\newblock NIPS, pages 613–621.
 
 \bibitem{Authors16c}
 J.~P. B. C.~S. Chao, Y.-W.;~Yang and J.~Deng.
@@ -13,34 +13,34 @@ J.~P. B. C.~S. Chao, Y.-W.;~Yang and J.~Deng.
 \bibitem{Authors16a}
 M.~J.~B. J.~Martinez and J.~Romero.
 \newblock On human motion prediction using recurrent neural networks, 2017.
-\newblock CoRR,abs/1705.02445 {\tt fg324.pdf}.
+\newblock CoRR,abs/1705.02445.
 
 \bibitem{Authors14a}
 Y.~P. Jean~Kossaifi, Linh~Tran and M.~Pantic.
 \newblock Gagan: Geometry-aware generative adversarial networks, 2018.
-\newblock IEEE CVPR {\tt fg324.pdf}.
+\newblock IEEE CVPR.
 
 \bibitem{Authors14b}
 R.~H. Z.~S. Lingxiao~Song, Zhihe~Lu and T.~Tan.
 \newblock Geometry guided adversarial facial expression synthesis, 2017.
-\newblock arXiv preprint arXiv:1712.03474 {\tt fg324.pdf}.
+\newblock arXiv preprint arXiv:1712.03474.
 
 \bibitem{Authors14c}
 Q.~S. B. S. T.~T. Liqian~Ma, Xu~Jia and L.~V. G.~P. guided person~image
   generation.
 \newblock Pose guided person image generation, 2017.
 \newblock In Advances in Neural Information Processing Systems, pages
-  405–415{\tt tr.pdf}.
+  405–415.
 
 \bibitem{Authors16b}
 N.~J. S.~Bengio, O.~Vinyals and N.~Shazeer.
 \newblock Scheduled sampling for sequence prediction with recurrent neural
   networks, 2015.
-\newblock Neural Information Processing Systems {\tt fg324.pdf}.
+\newblock Neural Information Processing Systems.
 
 \bibitem{Authors15a}
 D.~S. D.~C. Y.~Li, M. R.~Min and L.~Carin.
 \newblock Video generation from text, 2017.
-\newblock arXiv preprint arXiv:1710.00421 {\tt fg324.pdf}.
+\newblock arXiv preprint arXiv:1710.00421.
 
 \end{thebibliography}
