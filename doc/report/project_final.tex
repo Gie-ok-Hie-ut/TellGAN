@@ -148,45 +148,47 @@ With this method, the velocity of the motion also can be changed. This method ca
  After trying several network architectures, we found that a simpler 2-part approach with a motion prediction model and an image generation model using an initial frame and predicted landmarks was faster to train and produced better results. We performed a series of qualitative tests. 
  
 \subsection{UNet Image Generation}
- To test the image generator we performed a qualitative test to compare generated frames using ground truth landmarks with frames from ground truth videos. We are mostly interested in mouth movement, since the remaining parts of the face are expected to be static. We found the result is compelling. The mouth jitters which is caused by the landmark detection, but frame by frame it is difficult to tell which is image is fake. Teeth, tongue, and inner mouth is realistically generated. In motion the result can appear uncanny since the eyes and head pose remain perfectly stationary.
+ To test the image generator we performed a qualitative test to compare generated frames using ground truth landmarks with frames from ground truth videos. We are mostly interested in mouth movement, since the remaining parts of the face are expected to be static. We found the result is compelling. The mouth jitters which is caused by the landmark detection, but frame by frame it is difficult to tell which is image is fake. Teeth, tongue, and inner mouth is realistically generated. In motion the result can appear uncanny since the eyes and head pose remain perfectly stationary. See Figure \ref*{fig:green}, the bottom row for an example of generating a face with ground truth landmarks.
 
  \begin{figure*}[t]
  	\begin{center}
  		\includegraphics [scale=0.33] {images/green.png}
  	\end{center}
- 	\caption{Results saying the word \textbf{green} comparing Ground Truth (\textbf{top}), frames generated with predicted landmarks (\textbf{middle}), and frames generated with predicted landmarks using a normalized loss with tanh (\textbf{bottom}). The initial frame to the left is the starting frame.}
+ 	\caption{Results saying the word \textbf{green} comparing Ground Truth (\textbf{top}), frames generated with predicted landmarks (\textbf{middle}), and frames generated with ground truth landmarks (\textbf{bottom}). The initial frame to the left is the starting frame.}
  	\label{fig:green}
  \end{figure*}
  
 \subsection{LSTM Motion Prediction}
  Producing realistic speech motion from words is a challenging problem. Fine motions must be learned for a human to distinguish the motions between words. Another challenge of learning speech motions are that the times to say a word vary between person and instance. We did a variety of qualitative tests to identify where the model learned well and where it does not. 
  
- We conducted a qualitative experiment on how well our model can represent speech of a given word. Our goal is to produce plausible motions for a given word. Our current model is able to recreate up and down motions well, but the stretching the mouth corners outward (to produce sounds like 'e') and compressing the lips to form tight circles (for sounds like 'oo' or 'u') was not reproduced. We believe this is due to the smaller magnitude these motions produce when compared to the larger open and closing motions. The network learns there is a greater effect on minimizing the error by focusing on the up and down motions. We attempted to normalize the changes by applying a hyperbolic tangent function (Tanh) to the predicted and ground truth landmarks when computing the L1 loss. We were not able to fully train a network to asses how effective this was. While the initial inductions seem positive, the changes were too small and remain inconclusive. 
+ We conducted a qualitative experiment on how well our model can represent speech of a given word. Our goal is to produce plausible motions for a given word. Our current model is able to recreate up and down motions well, but the stretching of the mouth corners outward (to produce sounds like 'e') and compressing the lips to form tight circles (for sounds like 'oo' or 'u') was not reproduced. This makes it difficult to distinguish between words. We believe this is due to the smaller magnitude of changes these motions produce when compared to the larger opening and closing motions. The network learns there is a greater effect on minimizing the error by focusing on the up and down motions. We attempted to normalize the changes by applying a hyperbolic tangent function (Tanh) to the predicted and ground truth landmarks when computing the L1 loss. We were not able to fully train a network to asses how effective this was. While the initial inductions seem positive, the changes were too small and remain inconclusive. In Figure \ref{fig:tanh}, the original predicted result has little mouth stretching or compressing, but a dynamic up and down motion. The normalized (Tanh) predicted result has more compression compared to the original predicted, but is less dynamic.
  
  \begin{figure*}[t]
  	\begin{center}
  		\includegraphics [scale=0.33] {images/tanh.png}
  	\end{center}
- 	\caption{Results saying the letter \textbf{u} comparing Ground Truth (\textbf{top}), frames generated with predicted landmarks (\textbf{middle}), and frames generated with ground truth landmarks (\textbf{bottom}). The initial frame to the left is the starting frame.}
+ 	\caption{Results saying the letter \textbf{u} comparing Ground Truth (\textbf{top}), frames generated with predicted landmarks (\textbf{middle}), and frames generated with predicted landmarks using a normalized loss with $Tanh$ (\textbf{bottom}). The initial frame to the left is the starting frame.}
  	\label{fig:tanh}
  \end{figure*}
 
- Another qualitative test was to observe how well the model predicted face and landmarks when compared with ground truth. We found that the landmarks followed the open and close motions well for each word, though timings are imperfect. It is expected that the timings would not align well because only the landmark shape is personalize not how the word is uttered. 
+ Another qualitative test was to observe how well the model predicted face and landmarks when compared with ground truth. We found that the landmarks followed the open and close motions well for each word, though timings are imperfect. It is expected that the timings would not align well because only the landmark shape is personalize not how the word is uttered. See Figure \ref{fig:green} and Figure \ref{fig:tanh} for examples.
  
  We quantitatively tested how well the predicted landmarks matched ground truth and compared the result with a video generated using ground truth landmarks. This is a challenging test due to the inability of our network to model person specific motions and timings. We also compared the generating a video between predicted landmarks and the initial landmark to see if we can produce a better result than doing nothing. We found it difficult to produce a result better than not moving the mouth. This is again likely due to the lack of word personalization and timing.
  
- To test predicting words being spoken over various time intervals, we had the network predict the same word for a different number of frames. In our example we use the word 'soon' and generated video consisting of 3, 7, and 10 frames. From the result it is clear that the network learned to predict words for different number of frames as intended.
+ To test predicting words being spoken over various time intervals, we had the network predict the same word for a different number of frames. In our example we use the word 'soon' and generated video consisting of 3, 7, and 10 frames. From the result it is clear that the network learned to predict words for different number of frames as intended. Refer to figure \ref{fig:time} for an example.
  
  \begin{figure*}[t]
  	\begin{center}
  		\includegraphics [scale=0.2] {images/soon_time.png}
  	\end{center}
- 	\caption{Results saying the word \textbf{soon} over a different number of frames. \textbf{Top:} 3 frames, frames, \textbf{Middle:} 7 frames, \textbf{Bottom:} 10 frames. The frame 0 on the left is the initial frame.}
+ 	\caption{Results saying the word \textbf{soon} over a different number of frames. \textbf{Top:} 3 frames, frames, \textbf{Middle:} 7 frames, \textbf{Bottom:} 10 frames. The \textbf{frame 0} on the left is the initial frame.}
  	\label{fig:time}
  \end{figure*}
  
 \section{Conclusion}
-We have shown it is possible to predict plausible mouth motions and generate photo-realistic video given words and an initial starting frame. We have also shown that our model can learn and predict the same motions for a given word over a different number of frames.  
+We have shown it is possible to predict plausible mouth motions and generate photo-realistic video given words and an initial starting frame. Up and down mouth motions appear to be modeled well. We have also shown that our model can learn and predict the same motions for a given word over a different number of frames.
+
+Although some of our results were successful, there are several areas that need improvement or further work. Our model is not yet able to capture left and right stretching and compression well, making it hard to distinguish words. We also have not been able to fully train our network for any of the experiments due to the amount of time it takes to train. We also want to further augment the dataset with phoneme alignments to further brake down words into there most primitive set of mouth shapes. This will greatly enhance our model. Our model is not able to anticipate the next word, instead uses the previous word for smooth transitions between words. This is not ideal and future work could extend our model with a sentence level LSTM. Finally, it would be good to predict or simulate other motions beside the mouth and add changes in head pose to provide a more realistic result.
 
 {\small
 \bibliographystyle{ieee}
