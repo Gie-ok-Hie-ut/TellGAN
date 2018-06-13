@@ -214,8 +214,8 @@ class TellGANModel(BaseModel):
 
         return np2tensor_sq2 # 1*1*38*38 (b*c*w*h)
 
-    def compute_landmarks(self, lnmk_init, lnmk_change):
-        return lnmk_init.cuda() + (lnmk_change)
+    def compute_landmarks(self, lnmk_prev, lnmk_change):
+        return lnmk_prev.cuda() + lnmk_change
 
     def test(self, init_tensor, wordChage=False):
 
@@ -272,7 +272,7 @@ class TellGANModel(BaseModel):
                 '''
                 if wordChage:
                     # Reinitialize the word->feature lstm with prev predicted landmarks
-                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_predict.cpu()), 0)
+                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_predict_prev.cpu()), 0)
 
 
                     #self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
@@ -306,7 +306,7 @@ class TellGANModel(BaseModel):
                 lstm_input = self.lstm_stack.unsqueeze(1).cuda()
                 self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
-                self.lnmk_predict = self.compute_landmarks(self.lnmk_predict_prev,
+                self.lnmk_predict = self.compute_landmarks(lnmk_pred_sample,
                                                            self.lnmk_predict_delta)
 
                 # Generate changed Face from landmarks
@@ -404,6 +404,7 @@ class TellGANModel(BaseModel):
 
         #self.img_cur_enc = self.netImgEncoder(self.img_init.unsqueeze(0))
         self.lnmk_cur = self.lnmk_init
+        self.lnmk_prev = self.lnmk_cur
         self.word_cur = self.word_init
         self.word_cur_life = self.word_init_life
 
@@ -477,11 +478,10 @@ class TellGANModel(BaseModel):
         #                                                                                        current_sample_size))
 
         # loop through samples with no ground truth (oversample), predicting each one
-        lnmk_prev = self.lstm_stack[-1]
-        self.lnmk_cur_delta = self.lnmk_cur - lnmk_prev
+        self.lnmk_cur_delta = self.lnmk_cur - self.lnmk_prev
 
         # Initialize with previous ground truth
-        lnmk_pred_sample = lnmk_prev
+        lnmk_pred_sample = self.lnmk_prev
         for step in range(0, lstm_step):
             lstm_input = self.lstm_stack.unsqueeze(1).cuda()
             self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
@@ -495,7 +495,8 @@ class TellGANModel(BaseModel):
 
             # Back-propagate the change between predicted delta and GT delta for target frame
             self.weak_optimizer.zero_grad()
-            weak_loss = self.criterionIdt_lnmk(self.lnmk_predict_delta, self.lnmk_cur_delta.cuda().unsqueeze(0)) * 0.01
+            weak_loss = self.criterionIdt_lnmk(torch.tanh(lnmk_pred_sample),
+                                               torch.tanh(self.lnmk_cur.cuda().unsqueeze(0))) * 0.01
             weak_loss.backward(retain_graph=True)
             self.weak_optimizer.step()
 
@@ -503,7 +504,7 @@ class TellGANModel(BaseModel):
         lstm_input = self.lstm_stack.unsqueeze(1).cuda()
         self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
-        self.lnmk_predict = self.compute_landmarks(lnmk_prev, self.lnmk_predict_delta)
+        self.lnmk_predict = self.compute_landmarks(lnmk_pred_sample, self.lnmk_predict_delta)
 
         # Final
         self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur, size=(self.img_cur.size(1), self.img_cur.size(2)))
@@ -552,8 +553,8 @@ class TellGANModel(BaseModel):
         #self.loss_idt = self.mse_loss(self.img_cur, self.img_predict.squeeze(0)) * weight_idt
         self.loss_img_idt = self.criterionIdt(self.img_predict, self.img_cur.unsqueeze(0)) * weight_img_idt
 
-        self.loss_lnmk_idt = self.criterionIdt_lnmk(self.lnmk_predict_delta,
-                                                    self.lnmk_cur_delta.cuda().unsqueeze(0)) * weight_lnmk_idt
+        self.loss_lnmk_idt = self.criterionIdt_lnmk(torch.tanh(self.lnmk_predict),
+                                                    torch.tanh(self.lnmk_cur.cuda().unsqueeze(0))) * weight_lnmk_idt
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
         loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
@@ -573,6 +574,7 @@ class TellGANModel(BaseModel):
         self.loss_lnmk_idt = self.loss_lnmk_idt.data[0]
         #self.loss_G_speak = self.loss_G_speak.data[0]
         #self.loss_idt = self.loss_idt.data[0]
+        self.lnmk_prev = self.lnmk_cur
 
     def optimize_parameters(self, init_tensor = True):
         self.forward()
