@@ -175,8 +175,25 @@ With this method, the velocity of the motion also can be changed. This method ca
 
  Another qualitative test was to observe how well the model predicted face and landmarks when compared with ground truth. We found that the landmarks followed the open and close motions well for each word, though timings are imperfect. It is expected that the timings would not align well because only the landmark shape is personalize not how the word is uttered. See Figure \ref{fig:green} and Figure \ref{fig:tanh} for examples.
  
- We quantitatively tested how well the predicted landmarks matched ground truth and compared the result with a video generated using ground truth landmarks. This is a challenging test due to the inability of our network to model person specific motions and timings. We also compared the generating a video between predicted landmarks and the initial landmark to see if we can produce a better result than doing nothing. We found it difficult to produce a result better than not moving the mouth. This is again likely due to the lack of word personalization and timing.
+ We quantitatively tested how well the predicted landmarks matched ground truth and compared the result with a video generated using ground truth landmarks. This is a challenging test due to the inability of our network to model person specific motions and timings. We also compared the generating a video between predicted landmarks and the initial landmark to see if we can produce a better result than doing nothing. We found it difficult to produce a result better than not moving the mouth. This is again likely due to the lack of word personalization and timing. See Table \ref{table:mse_compare} for results.
  
+ \begin{table}
+ 	\begin{center}
+ 	\begin{tabular}{ c|c}
+ 		\hline
+ 		Test & MSE Score \\ 
+ 		\hline
+ 		Inital Landmarks & 0.0025860 \\  
+ 		GT Landmarks & 0.0024251 \\  
+ 		Predicted Landmarks & 0.0026107 \\
+ 		 & 
+ 	\end{tabular}
+ 
+ 	\caption{Comparing MSE Score between generated videos with different landmarks}
+	\label{table:mse_compare}
+	\end{center}
+ \end{table}
+
  To test predicting words being spoken over various time intervals, we had the network predict the same word for a different number of frames. In our example we use the word 'soon' and generated video consisting of 3, 7, and 10 frames. From the result it is clear that the network learned to predict words for different number of frames as intended. Refer to figure \ref{fig:time} for an example.
  
  \begin{figure*}[t]
