@@ -88,7 +88,6 @@ Motion predictor predicts the next motion based on the previous landmark informa
 
 Image generator uses an initial image and predicted landmarks. We used U-Net network to modify initial image based on the predicted landmarks. The landmark image and initial image is concatenated and passed through this network. U-Net network is a well-known network architecture which uses skip connections to reconstruct the image. For encoder and decoder part we all used the convolution layers and instance normalization layers. There are many ways for the decoder part to make the image size big. In this time, we used the transpose convolution as an upsampling.
 
-When we trained this model we first trained the image generator with the ground truth landmark at time t to avoid errors from motion predictor. We thought the wrong output from motion predictor could hinder image generator and pair discriminator from converging. After we could sure that both motion predictor and image generator works quite well, we used the predicted landmarks to the image generator.
 \subsection{Discriminator}
  There are two different types of a discriminator, sequence discriminator, and pair discriminator.
 \subsubsection{Sequence Discriminator}
@@ -127,7 +126,7 @@ This method can be represented like the left side of Figure 2.
 
 \begin{figure*}
 \begin{center}
-\includegraphics [scale=0.3] {images/upsample.JPG}
+\includegraphics [scale=0.4] {images/upsample.JPG}
 \end{center}
  \caption{$Left:$ Learning Prediction by Up-sampling. $Right:$ Prediction by Up-sampling. $Left:$ Same motion $M_k$ have the different number of frames. This GT value can be scaled up to specific fixed number of frames. $Right:$ Same motion $M_k$ is set to have the different number of frames. Sequence of shown frames at each row would be perceived to have motion like this.}
 \label{fig:short}
