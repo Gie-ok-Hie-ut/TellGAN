@@ -1,5 +1,99 @@
-This is BibTeX, Version 0.99dThe top-level auxiliary file: egpaper_final.aux
+This is BibTeX, Version 0.99d (TeX Live 2015/Debian)
+Capacity: max_strings=35307, hash_size=35307, hash_prime=30011
+The top-level auxiliary file: project_final.aux
 The style file: ieee.bst
-I found no \citation commands---while reading file egpaper_final.aux
 Database file #1: egbib.bib
-(There was 1 error message)
+Name 1 in "J. Martinez, M. J. Black, and J. Romero" has a comma at the end for entry Authors16a
+while executing---line 1073 of file ieee.bst
+Name 1 in "S. Bengio, O. Vinyals, N. Jaitly, and N. Shazeer" has a comma at the end for entry Authors16b
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Chao, Y.-W.; Yang, J.; Price, B.; Cohen, S.; and Deng, J" for entry Authors16c
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Chao, Y.-W.; Yang, J.; Price, B.; Cohen, S.; and Deng, J" for entry Authors16c
+while executing---line 1073 of file ieee.bst
+Name 1 in "Jean Kossaifi, Linh Tran, Yannis Panagakis, and Maja Pantic" has a comma at the end for entry Authors14a
+while executing---line 1073 of file ieee.bst
+Name 1 in "Lingxiao Song, Zhihe Lu, Ran He, Zhenan Sun, and Tieniu Tan" has a comma at the end for entry Authors14b
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Lingxiao Song, Zhihe Lu, Ran He, Zhenan Sun, and Tieniu Tan" for entry Authors14b
+while executing---line 1073 of file ieee.bst
+Name 1 in "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" has a comma at the end for entry Authors14c
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" for entry Authors14c
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" for entry Authors14c
+while executing---line 1073 of file ieee.bst
+Name 1 in "Y. Li, M. R. Min, D. Shen, D. Carlson, and L. Carin" has a comma at the end for entry Authors15a
+while executing---line 1073 of file ieee.bst
+Too many commas in name 1 of "Y. Li, M. R. Min, D. Shen, D. Carlson, and L. Carin" for entry Authors15a
+while executing---line 1073 of file ieee.bst
+Name 1 in "C. Vondrick, H. Pirsiavash, and A. Torralba" has a comma at the end for entry Authors15b
+while executing---line 1073 of file ieee.bst
+Name 1 in "C. Vondrick, H. Pirsiavash, and A. Torralba" has a comma at the end for entry Authors15b
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Chao, Y.-W.; Yang, J.; Price, B.; Cohen, S.; and Deng, J" for entry Authors16c
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Chao, Y.-W.; Yang, J.; Price, B.; Cohen, S.; and Deng, J" for entry Authors16c
+while executing---line 1116 of file ieee.bst
+Name 1 in "J. Martinez, M. J. Black, and J. Romero" has a comma at the end for entry Authors16a
+while executing---line 1116 of file ieee.bst
+Name 1 in "Jean Kossaifi, Linh Tran, Yannis Panagakis, and Maja Pantic" has a comma at the end for entry Authors14a
+while executing---line 1116 of file ieee.bst
+Name 1 in "Lingxiao Song, Zhihe Lu, Ran He, Zhenan Sun, and Tieniu Tan" has a comma at the end for entry Authors14b
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Lingxiao Song, Zhihe Lu, Ran He, Zhenan Sun, and Tieniu Tan" for entry Authors14b
+while executing---line 1116 of file ieee.bst
+Name 1 in "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" has a comma at the end for entry Authors14c
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" for entry Authors14c
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Liqian Ma, Xu Jia, Qianru Sun, Bernt Schiele, Tinne Tuytelaars, and Luc Van Gool. Pose guided person image generation" for entry Authors14c
+while executing---line 1116 of file ieee.bst
+Name 1 in "S. Bengio, O. Vinyals, N. Jaitly, and N. Shazeer" has a comma at the end for entry Authors16b
+while executing---line 1116 of file ieee.bst
+Name 1 in "Y. Li, M. R. Min, D. Shen, D. Carlson, and L. Carin" has a comma at the end for entry Authors15a
+while executing---line 1116 of file ieee.bst
+Too many commas in name 1 of "Y. Li, M. R. Min, D. Shen, D. Carlson, and L. Carin" for entry Authors15a
+while executing---line 1116 of file ieee.bst
+You've used 8 entries,
+            2120 wiz_defined-function locations,
+            542 strings with 5114 characters,
+and the built_in function-call counts, 1957 in all, are:
+= -- 176
+> -- 104
+< -- 0
++ -- 40
+- -- 32
+* -- 83
+:= -- 329
+add.period$ -- 24
+call.type$ -- 8
+change.case$ -- 40
+chr.to.int$ -- 0
+cite$ -- 8
+duplicate$ -- 56
+empty$ -- 177
+format.name$ -- 32
+if$ -- 417
+int.to.chr$ -- 0
+int.to.str$ -- 8
+missing$ -- 0
+newline$ -- 43
+num.names$ -- 16
+pop$ -- 80
+preamble$ -- 1
+purify$ -- 32
+quote$ -- 0
+skip$ -- 64
+stack$ -- 0
+substring$ -- 40
+swap$ -- 8
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 32
+warning$ -- 0
+while$ -- 16
+width$ -- 9
+write$ -- 82
+(There were 26 error messages)
