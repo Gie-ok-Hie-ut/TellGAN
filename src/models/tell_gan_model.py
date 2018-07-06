@@ -214,10 +214,8 @@ class TellGANModel(BaseModel):
 
         return np2tensor_sq2 # 1*1*38*38 (b*c*w*h)
 
-    def compute_landmarks(self, lnmk_init, word_life, lnmk_bias):
-        norm = 1. #/ float(word_life)
-        #print( "Norm Bias: " , torch.sum(lnmk_bias * norm))
-        return lnmk_init.cuda() + (lnmk_bias * norm)
+    def compute_landmarks(self, lnmk_init, lnmk_bias):
+        return lnmk_init.cuda() + lnmk_bias
 
     def test(self, init_tensor, wordChage=False):
 
@@ -298,7 +296,6 @@ class TellGANModel(BaseModel):
                 self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
                 self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
-                                                           self.word_cur_life,
                                                            self.lnmk_predict_delta)
 
                 self.lnmk_cur_delta = (self.lnmk_cur - self.lnmk_init)
@@ -474,7 +471,6 @@ class TellGANModel(BaseModel):
             self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
 
             lnmk_predict_sample = self.compute_landmarks(self.lnmk_init,
-                                                         self.word_cur_life,
                                                          self.lnmk_predict_delta)
             self.weak_optimizer.zero_grad()
             weak_loss = self.criterionIdt_lnmk(lnmk_predict_sample, self.lnmk_cur.unsqueeze(0).cuda()) * 0.01
@@ -486,7 +482,6 @@ class TellGANModel(BaseModel):
         self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
         self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
-                                                   self.word_cur_life,
                                                    self.lnmk_predict_delta)
 
         # Final
