@@ -172,7 +172,7 @@ if __name__ == '__main__':
                 continue
 
             # Exception - dic size
-            if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(word, -1) == -1:
+            if len(model.get_dic()) >= model.get_dic_size() and model.get_dic().get(word, -1) == -1:
                 print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, word))
                 #init_tensor = True
                 continue
@@ -202,14 +202,17 @@ if __name__ == '__main__':
             out_frames.append(gen_out_frame(visuals, word))
 
         #outputdata = np.expand_dims(np.array(out_frames), axis=3)
-        outputdata = np.array(out_frames)
-        skvideo.io.vwrite(vid_path.format(vid_idx), outputdata, outputdict=outputdict)
+        if (len(out_frames) > 0):
+            outputdata = np.array(out_frames)
+            skvideo.io.vwrite(vid_path.format(vid_idx), outputdata, outputdict=outputdict)
 
-        #writer.close()
-        #img_path = model.get_image_paths()
-        print('%04d: process video... %s' % (vid_idx, vid_path))
+            #writer.close()
+            #img_path = model.get_image_paths()
+            print('%04d: process video... %s' % (vid_idx, vid_path))
 
-        print("MSELoss for Video {0}: {1}", sum(vid_error)/len(vid_error))
+            print("MSELoss for Video {0}: {1}", sum(vid_error)/len(vid_error))
+        else:
+            print("No Result, no frames processed for video")
         #visualizer.save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio)
 
     webpage.save()

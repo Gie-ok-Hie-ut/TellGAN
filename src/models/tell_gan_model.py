@@ -24,6 +24,9 @@ class TellGANModel(BaseModel):
         self.toTensor = transforms.ToTensor()
 
         ###### Basic Parameters ######
+        # NOTE: Actual dictionary size is self.dic_size - 1
+        # due to backwards compatability with old since we always set 0 to 'defualt'
+        self.dic_size = 2
         self.feature_size = 20
         self.lstm_in_dim = (self.feature_size, self.feature_size)
         self.lstm_in_nc = 257
@@ -33,13 +36,13 @@ class TellGANModel(BaseModel):
         self.lstm_nlayers = 3 # too shallow?
         self.lstm_kernel_size = (3, 3)
         hidden_layers=5
-        lstm_input_size=self.feature_size*2
+        lstm_input_size=self.feature_size*2 #(x,y)
 
-        self.lstm_sample_size = 20
+        self.lstm_sample_size = 10
 
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet2',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netPredictor = networks.NextFeaturesForWord(input_size=lstm_input_size,
+        self.netPredictor = networks.NextFeaturesForWord(input_size=lstm_input_size+self.dic_size,
                                                          hidden_size=lstm_input_size*2,
                                                          output_size=lstm_input_size,
                                                          num_layers=self.lstm_nlayers)
@@ -51,7 +54,6 @@ class TellGANModel(BaseModel):
         self.netG.cuda()
 
         # Load Dictionary
-        self.dic_size = 30
         try:
             self.dictionary = np.load('grid_embedding.npy').item()
             print "[Dictionary] Loading Existing Embedding Dictionary"
@@ -177,7 +179,7 @@ class TellGANModel(BaseModel):
             self.img_input = Variable(self.input_frame)
 
 
-        self.word_tensor = self.Word2Tensor(self.input_transcription, self.feature_size*2)
+        self.word_tensor = self.Word2Tensor(self.input_transcription)#, self.feature_size*2)
         self.word_input = Variable(self.word_tensor)
         if train is False:
             self.word_input = Variable(self.word_tensor, volatile=True)
@@ -198,7 +200,10 @@ class TellGANModel(BaseModel):
             self.dictionary.update({word_cur: float((len(self.dictionary) + 1)) / self.dic_size})
 
         # Make Tensor
-        vec2np = np.full((1, dim), self.dictionary[word_cur])
+        vec2np = np.full((1, self.dic_size), 0)
+        index = int(self.dictionary[word_cur])
+        vec2np[0, index] = 1
+
         np2tensor = torch.from_numpy(vec2np).float()
 
         return np2tensor
@@ -235,7 +240,8 @@ class TellGANModel(BaseModel):
             self.word_init_life = self.word_seq_length
             self.word_cur_life = self.word_init_life
 
-            self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
+            self.lstm_stack = self.lnmk_cur.unsqueeze(0)
+            self.word_stack = None
 
             # Redundant
             self.img_predict = self.img_input.unsqueeze(0).cuda()
@@ -272,7 +278,8 @@ class TellGANModel(BaseModel):
                 '''
                 if wordChage:
                     # Reinitialize the word->feature lstm with prev predicted landmarks
-                    self.lstm_stack = torch.cat((self.word_init, self.lnmk_predict_prev.cpu()), 0)
+                    self.lstm_stack = self.lnmk_predict_prev.cpu()
+                    self.word_stack = None
 
 
                     #self.lstm_stack = torch.cat((self.word_init, self.lnmk_cur.unsqueeze(0)), 0)
@@ -289,25 +296,33 @@ class TellGANModel(BaseModel):
                 # loop through samples with no ground truth (oversample), predicting each one
                 self.lnmk_cur_delta = self.lnmk_cur - self.lnmk_prev
 
+                if (self.word_stack is None):
+                    self.word_stack = self.word_cur
+                else:
+                    self.word_stack = torch.cat((self.word_stack, self.word_cur), 0)
+
                 # Initialize with previous ground truth
                 lnmk_pred_sample = self.lnmk_predict_prev.cpu()
                 for step in range(0, lstm_step):
-                    lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+                    # Concatenate each lmk point set with word
+                    lstm_input = torch.cat((self.lstm_stack, self.word_stack), 1).unsqueeze(1).cuda()
                     self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
                     # Add previous landmark (GT or predicted) with predicted change
-                    lnmk_pred_sample = self.compute_landmarks(lnmk_pred_sample,
-                                                              self.lnmk_predict_delta)
+                    lnmk_pred_sample = self.lnmk_predict_delta #self.compute_landmarks(lnmk_pred_sample, self.lnmk_predict_delta)
+
+                    # Keep stacking with same word
+                    self.word_stack = torch.cat((self.word_stack, self.word_cur), 0)
 
                     # Stack After with predicted landmark
                     self.lstm_stack = torch.cat((self.lstm_stack, lnmk_pred_sample.detach().cpu()), 0)
 
                 # Predict Current Landmarks
-                lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+                # Concatenate each lmk point set with word
+                lstm_input = torch.cat((self.lstm_stack, self.word_stack), 1).unsqueeze(1).cuda()
                 self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
-                self.lnmk_predict = self.compute_landmarks(lnmk_pred_sample,
-                                                           self.lnmk_predict_delta)
+                self.lnmk_predict = self.lnmk_predict_delta #self.compute_landmarks(lnmk_pred_sample, self.lnmk_predict_delta)
 
                 # Generate changed Face from landmarks
                 self.lnmk_cur_imgT, self.lnmk_cur_img = self.landmarkToImg(self.lnmk_cur,
@@ -414,10 +429,10 @@ class TellGANModel(BaseModel):
 
         self.lnmk_predict = self.lnmk_cur.unsqueeze(0)
 
-        self.lstm_stack = torch.cat((self.word_cur, self.lnmk_predict),0)
+        self.lstm_stack = self.lnmk_predict
 
         self.word_flag = True
-        self.word_stack = 0  # Is it okay to use?
+        self.word_stack = None  # Is it okay to use?
 
         # Save (Just for the exception case)
         self.img_init_save = self.img_init.data
@@ -480,28 +495,40 @@ class TellGANModel(BaseModel):
         # loop through samples with no ground truth (oversample), predicting each one
         self.lnmk_cur_delta = self.lnmk_cur - self.lnmk_prev
 
+        if (self.word_stack is None):
+            self.word_stack = self.word_cur
+        else:
+            self.word_stack = torch.cat((self.word_stack, self.word_cur),0)
+
         # Initialize with previous ground truth
         lnmk_pred_sample = self.lnmk_prev
         for step in range(0, lstm_step):
-            lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+
+            # Concatenate each lmk point set with word
+            lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
+
             self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
             # Add previous landmark (GT or predicted) with predicted change
-            lnmk_pred_sample = self.compute_landmarks(lnmk_pred_sample,
-                                                      self.lnmk_predict_delta)
+            lnmk_pred_sample = self.compute_landmarks(lnmk_pred_sample, self.lnmk_predict_delta)
+
+            # Keep stacking with same word
+            self.word_stack = torch.cat((self.word_stack, self.word_cur), 0)
 
             # Stack After with predicted landmark
             self.lstm_stack = torch.cat((self.lstm_stack, lnmk_pred_sample.detach().cpu()), 0)
 
             # Back-propagate the change between predicted delta and GT delta for target frame
             self.weak_optimizer.zero_grad()
-            weak_loss = self.criterionIdt_lnmk(torch.tanh(lnmk_pred_sample),
-                                               torch.tanh(self.lnmk_cur.cuda().unsqueeze(0))) * 0.01
+            interp_lmk_gt_delta = step/lstm_step * self.lnmk_cur_delta.cuda()
+            weak_loss = self.criterionIdt_lnmk(torch.tanh(self.lnmk_predict_delta),
+                                               torch.tanh(interp_lmk_gt_delta.unsqueeze(0))) * 0.1
             weak_loss.backward(retain_graph=True)
             self.weak_optimizer.step()
 
         # Prediction
-        lstm_input = self.lstm_stack.unsqueeze(1).cuda()
+        # Concatenate each lmk point set with word
+        lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
         self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
 
         self.lnmk_predict = self.compute_landmarks(lnmk_pred_sample, self.lnmk_predict_delta)
