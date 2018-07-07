@@ -52,7 +52,7 @@ if __name__ == '__main__':
         iter_data_time = time.time()
         epoch_iter = 0
 
-        for vid_idx in range(0,dataset_size): #13549,dataset_size):
+        for vid_idx in range(20,dataset_size): #13549,dataset_size):
             video = dataset[vid_idx]
             iter_start_time = time.time()
             if total_steps % opt.print_freq == 0:
@@ -114,7 +114,7 @@ if __name__ == '__main__':
                     continue
 
                 # Exception - dic size                
-                if len(model.get_dic()) > model.get_dic_size() and model.get_dic().get(word, -1) == -1:
+                if len(model.get_dic()) >= model.get_dic_size() and model.get_dic().get(word, -1) == -1:
                     print("[Dictionary Full] Frame: {0} Word: {1}".format(frame_idx, word))
                     init_tensor=True
                     continue

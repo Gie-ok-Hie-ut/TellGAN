@@ -65,7 +65,10 @@ class GRID(data.Dataset):
                     continue
 
                 id = os.path.splitext(fname)[0]
-                self.id_to_user[id] = user_dir
+                anno_path = self._annopath % str(id)
+                # Only add if annotaion file exists
+                if(os.path.isfile(anno_path)):
+                    self.id_to_user[id] = user_dir
 
         print("Map of Users(%s)" % len(self.id_to_user))
 
