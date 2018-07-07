@@ -178,6 +178,7 @@ if __name__ == '__main__':
                 continue
 
             if init_tensor is True:
+                print("Predicting: {0}".format(word))
                 last_word = word
 
             wordChange = word is not last_word

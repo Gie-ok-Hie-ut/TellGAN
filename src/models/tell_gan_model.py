@@ -26,7 +26,7 @@ class TellGANModel(BaseModel):
         ###### Basic Parameters ######
         # NOTE: Actual dictionary size is self.dic_size - 1
         # due to backwards compatability with old since we always set 0 to 'defualt'
-        self.dic_size = 2
+        self.dic_size = 3
         self.feature_size = 20
         self.lstm_in_dim = (self.feature_size, self.feature_size)
         self.lstm_in_nc = 257
@@ -38,7 +38,7 @@ class TellGANModel(BaseModel):
         hidden_layers=5
         lstm_input_size=self.feature_size*2 #(x,y)
 
-        self.lstm_sample_size = 10
+        self.lstm_sample_size = 20
 
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet2',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
@@ -58,7 +58,7 @@ class TellGANModel(BaseModel):
             self.dictionary = np.load('grid_embedding.npy').item()
             print "[Dictionary] Loading Existing Embedding Dictionary"
         except IOError as e:
-            self.dictionary = {'default': 0}
+            self.dictionary = {'default': 0, 'green': 1, 'soon': 2}
             print "[Dictionary] Building New Word Embedding Dictionary"
 
 
@@ -246,6 +246,7 @@ class TellGANModel(BaseModel):
             self.img_predict = self.img_input.unsqueeze(0).cuda()
             self.img_predict_save = self.img_predict.data
             self.lnmk_predict = self.lnmk_cur.unsqueeze(0).cuda()
+            self.lnmk_predict_prev = self.lnmk_predict
 
             self.lnmk_init_imgT, self.lnmk_init_img = self.landmarkToImg(self.lnmk_cur,
                                                                        size=(self.img_cur.size(1),
@@ -342,6 +343,8 @@ class TellGANModel(BaseModel):
 
                 self.lnmk_cur_save = self.lnmk_cur_img
                 self.lnmk_predict_save = self.lnmk_predict_img
+                self.lnmk_prev = self.lnmk_cur
+                self.lnmk_predict_prev = self.lnmk_predict
 
         self.loss_test = self.criterionTest(self.img_predict, self.img_cur.unsqueeze(0)).data[0]
         self.loss_test_lmk = self.criterionTest(self.lnmk_predict, self.lnmk_cur.cuda().unsqueeze(0)).data[0]
@@ -554,7 +557,7 @@ class TellGANModel(BaseModel):
         weight_G_lnmk = 1
         weight_G_pair = 3
         weight_img_idt = 0.1 #Changed from 2 @ 700 videos
-        weight_lnmk_idt = 2
+        weight_lnmk_idt = 5
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
