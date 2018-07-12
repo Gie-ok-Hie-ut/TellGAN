@@ -42,16 +42,20 @@ class TellGANModel(BaseModel):
 
         ###### Network setting ######
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, 'LandmarkUnet2',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
-        self.netPredictor = networks.NextFeaturesForWord(input_size=lstm_input_size+self.dic_size,
-                                                         hidden_size=lstm_input_size*2,
+        self.netPredictor = networks.NextFeaturesForWord(input_size=lstm_input_size,
+                                                         dic_size=self.dic_size,
+                                                         hidden_size=lstm_input_size,
                                                          output_size=lstm_input_size,
                                                          num_layers=self.lstm_nlayers)
+        self.netF = networks.define_F(gpu_ids=self.gpu_ids)
+
         #self.netImgEncoder = networks.define_ImgEncoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_enc',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
         #self.netImgLSTM = networks.define_ConvLSTM(self.lstm_in_dim, self.lstm_in_nc, self.lstm_nlayers, self.lstm_out_nc, self.lstm_kernel_size, self.gpu_ids)
         #self.netImgDecoder = networks.define_ImgDecoder(opt.input_nc, opt.output_nc, opt.ngf, 'resnet_3blocks_dec',opt.norm, not opt.no_dropout, opt.init_type, self.gpu_ids)
 
         self.netPredictor.cuda()#self.gpu_ids)
         self.netG.cuda()
+        self.netF.cuda()
 
         # Load Dictionary
         try:
@@ -67,7 +71,7 @@ class TellGANModel(BaseModel):
 
 
             #self.netD_lstm = networks.define_D(opt.output_nc, opt.ndf, 'lstm_dis', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
-            self.netD_lstm = networks.SimpleLSTMDiscriminator(input_size=(self.feature_size*2), hidden_size=self.feature_size*2, num_layers=hidden_layers)
+            self.netD_lstm = networks.SimpleLSTMDiscriminator(input_size=(self.feature_size*2+self.dic_size), hidden_size=self.feature_size*2, num_layers=hidden_layers)
             self.netD_pair = networks.define_D(4, opt.ndf, 'basic', opt.n_layers_D, opt.norm,use_sigmoid, opt.init_type, self.gpu_ids)
 
             self.netD_lstm.cuda()
@@ -299,8 +303,9 @@ class TellGANModel(BaseModel):
 
                 # loop through samples with no ground truth (oversample), predicting each one
                 for step in range(0, lstm_step):
-                    lstm_input = torch.cat((self.lstm_stack, self.word_stack), 1).unsqueeze(1).cuda()
-                    self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
+                    # lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
+                    self.lnmk_predict_delta = self.netPredictor(self.lstm_stack.detach().unsqueeze(1).cuda(),
+                                                                self.word_stack.detach().unsqueeze(1).cuda())
 
                     # Keep stacking with same word
                     self.word_stack = torch.cat((self.word_stack, self.word_cur), 0)
@@ -309,8 +314,9 @@ class TellGANModel(BaseModel):
                     self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
 
                 # Predict Current Landmarks
-                lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
-                self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
+                #lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
+                self.lnmk_predict_delta = self.netPredictor(self.lstm_stack.detach().unsqueeze(1).cuda(),
+                                                            self.word_stack.detach().unsqueeze(1).cuda())
 
                 self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
                                                            self.lnmk_predict_delta)
@@ -426,6 +432,8 @@ class TellGANModel(BaseModel):
         self.word_flag = True
         self.word_stack = None  # Is it okay to use?
 
+        self.dis_word_stack = self.word_cur
+
         # Save (Just for the exception case)
         self.img_init_save = self.img_init.data
         self.img_cur_save = self.img_init.data
@@ -496,15 +504,17 @@ class TellGANModel(BaseModel):
         for step in range(0, lstm_step):
 
             # Concatenate each lmk point set with word
-            lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
 
-            self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
+            # lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
+            self.lnmk_predict_delta = self.netPredictor(self.lstm_stack.detach().unsqueeze(1).cuda(),
+                                                        self.word_stack.detach().unsqueeze(1).cuda())
 
             # Add previous landmark (GT or predicted) with predicted change
             lnmk_pred_sample = self.compute_landmarks(self.lnmk_init, self.lnmk_predict_delta)
 
             # Keep stacking with same word
             self.word_stack = torch.cat((self.word_stack, self.word_cur), 0)
+            self.dis_word_stack = torch.cat((self.dis_word_stack, self.word_cur), 0)
 
             # Stack After with predicted landmark
             self.lstm_stack = torch.cat((self.lstm_stack, lnmk_pred_sample.detach().cpu()), 0)
@@ -512,15 +522,16 @@ class TellGANModel(BaseModel):
             # Back-propagate the change between predicted delta and GT delta for target frame
             self.weak_optimizer.zero_grad()
             interp_lmk_gt_delta = step/lstm_step * self.lnmk_cur_delta.cuda()
-            weak_loss = self.criterionIdt_lnmk(torch.tanh(self.lnmk_predict_delta),
-                                               torch.tanh(interp_lmk_gt_delta.unsqueeze(0))) * 0.1
+            weak_loss = self.criterionIdt_lnmk(self.lnmk_predict_delta,
+                                               interp_lmk_gt_delta.unsqueeze(0)) * 0.1
             weak_loss.backward(retain_graph=True)
             self.weak_optimizer.step()
 
         # Prediction
         # Concatenate each lmk point set with word
-        lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
-        self.lnmk_predict_delta = self.netPredictor(lstm_input.detach())
+        # lstm_input = torch.cat((self.lstm_stack, self.word_stack),1).unsqueeze(1).cuda()
+        self.lnmk_predict_delta = self.netPredictor(self.lstm_stack.detach().unsqueeze(1).cuda(),
+                                                    self.word_stack.detach().unsqueeze(1).cuda())
 
         self.lnmk_predict = self.compute_landmarks(self.lnmk_init,
                                                    self.lnmk_predict_delta)
@@ -535,14 +546,15 @@ class TellGANModel(BaseModel):
         self.img_predict = self.netG(self.img_concat.unsqueeze(0).cuda()) # Train focus on Face Generator
 
         # Stack After
-        self.lstm_stack_fake = torch.cat((self.lstm_stack, self.lnmk_predict_delta.cpu()), 0)
+        self.lstm_stack_fake = torch.cat((self.lstm_stack, lnmk_pred_sample.detach().cpu()), 0)
         self.lstm_stack = torch.cat((self.lstm_stack, self.lnmk_cur_delta.unsqueeze(0)), 0)
 
 
         # For Discriminator
         # 1. Discriminator_lnmk - fake landmark added
-        self.dis_lnmk_real = self.lstm_stack.unsqueeze(1)
-        self.dis_lnmk_fake = self.lstm_stack_fake.unsqueeze(1)
+        self.dis_word_stack = torch.cat((self.dis_word_stack, self.word_cur),0)
+        self.dis_lnmk_real = torch.cat((self.lstm_stack, self.dis_word_stack), 1).unsqueeze(1)
+        self.dis_lnmk_fake = torch.cat((self.lstm_stack_fake, self.dis_word_stack), 1).unsqueeze(1)
 
         # 2. Discriminator_word - fake word added
         #self.dis_word_real = torch.cat((self.lnmk_stack, self.word_stack2_fake), 1) # Should be changed
@@ -558,6 +570,7 @@ class TellGANModel(BaseModel):
         weight_G_pair = 3
         weight_img_idt = 0.1 #Changed from 2 @ 700 videos
         weight_lnmk_idt = 5
+        weight_percep = 1
 
         # Loss Calculate
         #self.fake_dspeak_enc = torch.cat((self.lnmk_predict.unsqueeze(0), self.netImgEncoder(self.img_predict), self.word_cur_enc), 1)
@@ -576,11 +589,14 @@ class TellGANModel(BaseModel):
         #tanh_gt_delta = torch.tanh(self.lnmk_cur_delta.unsqueeze(0).cuda())
         #tanh_pred_delta = torch.tanh(self.lnmk_predict_delta)
         #self.loss_lnmk_idt = self.criterionIdt_lnmk(tanh_pred_delta, tanh_gt_delta) * weight_lnmk_idt
-        self.loss_lnmk_idt = self.criterionIdt_lnmk(torch.tanh(self.lnmk_predict),
-                                                    torch.tanh(self.lnmk_cur.cuda().unsqueeze(0))) * weight_lnmk_idt
+        self.loss_lnmk_idt = self.criterionIdt_lnmk(self.lnmk_predict,
+                                                    self.lnmk_cur.cuda().unsqueeze(0)) * weight_lnmk_idt
+
+        # Perceptual Loss
+        self.loss_percep = self.criterionIdt(self.netF(self.lnmk_predict_imgT), self.netF(self.lnmk_cur_imgT)) * weight_percep
 
         #loss_total = self.loss_G_word + self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
-        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt
+        loss_total = self.loss_G_lnmk + self.loss_G_pair + self.loss_img_idt + self.loss_lnmk_idt + self.loss_percep
         loss_total.backward(retain_graph=True)
 
 

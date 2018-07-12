@@ -1,9 +1,11 @@
+from __future__ import division
 import torch
 import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
+import torchvision
 
 from .convlstm import ConvLSTM
 ###############################################################################
@@ -255,6 +257,19 @@ def define_D(input_nc, ndf, which_model_netD,n_layers_D=3, norm='batch', use_sig
         init_weights(netD, init_type=init_type)
     return netD
 
+# On Network.py
+def define_F(gpu_ids, use_bn=False):
+    tensor = torch.cuda.FloatTensor if gpu_ids else torch.FloatTensor
+    # pytorch pretrained VGG19-54, before ReLU.
+    if use_bn:
+        feature_layer = 49
+    else:
+        feature_layer = 34
+    netF = VGGFeatureExtractor(feature_layer=feature_layer, use_bn=use_bn, use_input_norm=True, tensor=tensor)
+    if gpu_ids:
+        netF = nn.DataParallel(netF).cuda()
+    netF.eval()  # No need to train
+    return netF
 
 def print_network(net):
     num_params = 0
@@ -803,7 +818,7 @@ class SimpleLSTMDiscriminator(nn.Module):
         self.num_layers = num_layers
 
         self.input_seq = [
-            nn.Linear(hidden_size,hidden_size)
+            nn.Linear(input_size,input_size)
         ]
 
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers)
@@ -879,7 +894,7 @@ class NextFeaturesForWord(nn.Module):
 
     '''
 class NextFeaturesForWord(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size=None, num_layers=5):
+    def __init__(self, input_size, hidden_size, dic_size, output_size=None, num_layers=5):
         super(NextFeaturesForWord, self).__init__()
 
         output_size =  output_size if output_size is not None else hidden_size
@@ -891,18 +906,14 @@ class NextFeaturesForWord(nn.Module):
             nn.Linear(input_size, hidden_size),
             nn.Dropout(0.5),
             nn.Linear(hidden_size, hidden_size)
-            #nn.ReLU(True),
-            #nn.Sigmoid()
         ]
 
         self.output_seq = [
             nn.Linear(hidden_size,output_size)
-            #nn.ReLU(True),
-            #nn.Sigmoid()
         ]
 
         self.in_layer = nn.Sequential(*self.input_seq)
-        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers)
+        self.lstm = nn.LSTM(hidden_size+dic_size, hidden_size, num_layers)
         self.out_layer = nn.Sequential(*self.output_seq)
 
         self.hidden = self.init_hidden()
@@ -915,16 +926,51 @@ class NextFeaturesForWord(nn.Module):
         return (Variable(torch.zeros(self.num_layers, 1, self.hidden_size).cuda()),
                 Variable(torch.zeros(self.num_layers, 1, self.hidden_size).cuda()))
 
-    def forward(self, input):
-        lstm_in = None
-        for seq in range(0,input.size(0)):
-            seq_enc = self.in_layer(input[seq]).unsqueeze(0)
-            if lstm_in is None:
-                lstm_in = seq_enc
+    def forward(self, lmks, word):
+        lmk_enc = None
+        for seq in range(0,lmks.size(0)):
+            seq_enc = self.in_layer(lmks[seq]).unsqueeze(0)
+            if lmk_enc is None:
+                lmk_enc = seq_enc
             else:
-                lstm_in = torch.cat((lstm_in, seq_enc),0)
+                lmk_enc = torch.cat((lmk_enc, seq_enc),0)
+
+        # Concat word to encodings
+        lstm_in = torch.cat((lmk_enc, word), 2)
 
         pred_seq, self.hidden = self.lstm(lstm_in, self.init_hidden())
         pred_latent = pred_seq[-1]
         out = self.out_layer(pred_latent)
         return out
+
+
+
+class VGGFeatureExtractor(nn.Module):
+    def __init__(self,
+                 feature_layer=34,
+                 use_bn=False,
+                 use_input_norm=True,
+                 tensor=torch.FloatTensor):
+        super(VGGFeatureExtractor, self).__init__()
+        if use_bn:
+            model = torchvision.models.vgg19_bn(pretrained=True)
+        else:
+            model = torchvision.models.vgg19(pretrained=True)
+        self.use_input_norm = use_input_norm
+        if self.use_input_norm:
+            mean = Variable(tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1), requires_grad=False)
+            # [0.485-1, 0.456-1, 0.406-1] if input in range [-1,1]
+            std = Variable(tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1), requires_grad=False)
+            # [0.229*2, 0.224*2, 0.225*2] if input in range [-1,1]
+            self.register_buffer('mean', mean)
+            self.register_buffer('std', std)
+        self.features = nn.Sequential(*list(model.features.children())[:(feature_layer + 1)])
+        # No need to BP to variable
+        for k, v in self.features.named_parameters():
+            v.requires_grad = False
+
+    def forward(self, x):
+        if self.use_input_norm:
+            x = (x - self.mean) / self.std
+        output = self.features(x)
+        return output
